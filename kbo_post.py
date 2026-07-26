@@ -2,13 +2,18 @@
 """
 Post English-language KBO League updates to Bluesky (@kbo-english.bsky.social).
 
-Four post types:
+Five post types:
 
   schedule   A pre-game thread: (1) tonight's matchups and start times (KST),
              with (2) the probable starting pitchers threaded underneath, each
              on its own card.
+  live       A standalone box-score card posted as each game goes final,
+             attendance-gated (held until KBO publishes that game's crowd
+             figure). Polled through the evening; the results roundup below is
+             the safety net for anything a poll misses.
   results    A nightly final-scores digest (every game's final in one post),
-             then a compact box score threaded underneath per game.
+             then a compact box score threaded underneath per game that wasn't
+             already posted live.
   standings  A daily rank / W-L / games-back table (from the KBO English site).
   leaders    A weekly season-leaders thread: a lead post, then one reply per
              leaderboard (top 3), romanised via the KBO English player pages.
@@ -43,6 +48,7 @@ Requires (only for a real post, not --dry-run):
 
 Usage:
     python3 kbo_post.py schedule  --dry-run          # tonight's games (today KST)
+    python3 kbo_post.py live      --dry-run           # games gone final since last poll
     python3 kbo_post.py results   --dry-run           # tonight's finals
     python3 kbo_post.py standings --dry-run           # today's standings
     python3 kbo_post.py leaders   --dry-run           # season stat leaders
@@ -816,13 +822,22 @@ def attach_results_card(date_str, finals, cancelled, segments):
     return with_card(segments, 0, card)
 
 
-def box_score_segments(finals, roster, added, attendance=None):
-    """A box-score reply per finished game, each carrying its own card."""
+def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids=()):
+    """A box-score segment per finished game, each carrying its own card.
+
+    `tags` sets the hashtags on every segment: empty for the roundup, where
+    these are threaded replies under the already-tagged digest, and HASHTAGS for
+    a standalone live post, which is its own thread root. `skip_ids` drops games
+    already posted live, so the nightly roundup only threads box scores for games
+    the live run didn't cover — its digest card still lists every final."""
     import kbo_card
     import kbo_card_data as data
     attendance = attendance or {}
+    skip_ids = set(skip_ids)
     segments = []
     for g in by_start(finals):
+        if g['gameId'] in skip_ids:
+            continue
         record = fetch_box_score(g['gameId'])
         if not record:
             continue
@@ -838,7 +853,7 @@ def box_score_segments(finals, roster, added, attendance=None):
             lambda path, game=game, label=label:
                 kbo_card.render_box_score_card(label, game, path),
             data.box_alt(label, game))
-        segments.append(card_only((body, []), card))
+        segments.append(card_only((body, list(tags)), card))
     return segments
 
 
@@ -999,9 +1014,9 @@ def evaluate_results(candidates, history, ignore_history):
     return None
 
 
-def emit(mode, date_str, segments, dry_run, history, count):
-    """Print each segment, and (unless dry-run) post the thread and record it.
-    Returns True if it actually posted."""
+def print_segments(mode, segments):
+    """Dump each segment (text, length, over-limit flag, card size + alt) to
+    stdout — the shared preview used by both threaded emit() and the live path."""
     for i, segment in enumerate(segments):
         body, tags, card = seg_parts(segment)
         text = plain_text(body, tags)
@@ -1015,6 +1030,12 @@ def emit(mode, date_str, segments, dry_run, history, count):
                   f'    alt: {card["alt"]}')
         else:
             print('  (no card — text only)')
+
+
+def emit(mode, date_str, segments, dry_run, history, count):
+    """Print each segment, and (unless dry-run) post the thread and record it.
+    Returns True if it actually posted."""
+    print_segments(mode, segments)
     if dry_run:
         print('\n(dry run — nothing posted, history untouched)')
         return False
@@ -1030,7 +1051,8 @@ def main():
     argv = sys.argv[1:]
     mode = ('schedule' if 'schedule' in argv
             else 'standings' if 'standings' in argv
-            else 'leaders' if 'leaders' in argv else 'results')
+            else 'leaders' if 'leaders' in argv
+            else 'live' if 'live' in argv else 'results')
     dry_run = '--dry-run' in argv
     ignore_history = '--all' in argv
     history = load_history()
@@ -1094,6 +1116,58 @@ def main():
         emit('schedule', date_str, segments, dry_run, history, len(playable))
         return
 
+    if mode == 'live':
+        date_str = (argv[argv.index('--date') + 1] if '--date' in argv
+                    else datetime.now(KST).strftime('%Y-%m-%d'))
+        games = fetch_games(date_str)
+        finals = [g for g in games
+                  if g.get('statusCode') == FINAL and not g.get('cancel')]
+        pending = [g for g in finals
+                   if f'live:{g["gameId"]}' not in history or ignore_history]
+        if not pending:
+            print(f'{date_str}: {len(finals)} final, none new to post live.')
+            return
+        # Attendance-gated: KBO publishes each crowd figure about when the game
+        # goes final, but a game that just ended may not have its number up yet.
+        # Such a game is held for a later poll; if it never publishes, the
+        # nightly roundup still carries it (without the figure). One crowd-page
+        # fetch serves the whole poll.
+        attendance = fetch_attendance(date_str)
+        roster = load_roster()
+        added = []
+        posted = 0
+        for g in by_start(pending):
+            gid = g['gameId']
+            matchup = f'{g["awayTeamCode"]}@{g["homeTeamCode"]}'
+            if not attendance.get(g['homeTeamCode']):
+                print(f'  {matchup}: final, attendance not yet published — holding.')
+                continue
+            segs = box_score_segments([g], roster, added, attendance, tags=HASHTAGS)
+            if not segs:                        # box score not fetchable yet
+                print(f'  {matchup}: box score not ready — holding.')
+                continue
+            print_segments('live', segs)
+            if dry_run:
+                continue
+            post_thread(segs)
+            history[f'live:{gid}'] = {
+                'posted_at': datetime.now(timezone.utc).isoformat(),
+                'matchup': matchup}
+            write_json_atomic(HISTORY, history, ensure_ascii=False, indent=2)
+            posted += 1
+        if added and not dry_run:
+            write_json_atomic(ROSTER, roster, ensure_ascii=False,
+                              indent=2, sort_keys=True)
+            for pc, entry in added:
+                warn = ('  ⚠ NEW IMPORT — if East-Asian, add to KEEP_SURNAME_FIRST'
+                        if entry.get('foreign') else '')
+                print(f'  + roster {pc}: {entry["name"]}{warn}')
+        if dry_run:
+            print('\n(dry run — nothing posted, history untouched)')
+        else:
+            print(f'\nPosted {posted} live game(s).')
+        return
+
     # results
     picked = evaluate_results(results_candidates(argv), history, ignore_history)
     if not picked:
@@ -1106,7 +1180,13 @@ def main():
     attendance = fetch_attendance(date_str)
     segments = compose_results(date_str, finals, cancelled)
     segments = attach_results_card(date_str, finals, cancelled, segments)
-    segments += box_score_segments(finals, roster, added, attendance)
+    # Games already posted live carry their box score there, so the roundup only
+    # threads box scores for games the live run missed. The digest card above
+    # still lists every final, so the day's slate is complete in one post.
+    already_live = {g['gameId'] for g in finals
+                    if f'live:{g["gameId"]}' in history}
+    segments += box_score_segments(finals, roster, added, attendance,
+                                   skip_ids=already_live)
     if added:
         if not dry_run:
             write_json_atomic(ROSTER, roster, ensure_ascii=False,
@@ -1139,5 +1219,5 @@ if __name__ == '__main__':
     # Only real runs count as a heartbeat; a manual --dry-run should not make a
     # stalled bot look alive.
     if '--dry-run' not in sys.argv[1:]:
-        record_run(next((m for m in ('schedule', 'standings', 'leaders')
+        record_run(next((m for m in ('schedule', 'standings', 'leaders', 'live')
                          if m in sys.argv[1:]), 'results'))
