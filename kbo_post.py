@@ -805,14 +805,15 @@ def with_card(segments, index, card):
     return out
 
 
-def attach_results_card(date_str, finals, cancelled, segments):
+def attach_results_card(date_str, finals, cancelled, segments, roster, added):
     """The final-scores digest gets a card of the same slate, rainouts
     included — the card carries the whole post, so a postponement dropped here
     would vanish entirely."""
     import kbo_card
     import kbo_card_data as data
     records = {g['gameId']: fetch_box_score(g['gameId']) for g in finals}
-    rows = data.results_input(finals, {k: v for k, v in records.items() if v})
+    rows = data.results_input(finals, {k: v for k, v in records.items() if v},
+                              roster, added)
     ppd = data.postponed_input(cancelled)
     label = data.card_date(date_str)
     card = build_card(
@@ -1179,7 +1180,8 @@ def main():
     added = []
     attendance = fetch_attendance(date_str)
     segments = compose_results(date_str, finals, cancelled)
-    segments = attach_results_card(date_str, finals, cancelled, segments)
+    segments = attach_results_card(date_str, finals, cancelled, segments,
+                                   roster, added)
     # Games already posted live carry their box score there, so the roundup only
     # threads box scores for games the live run missed. The digest card above
     # still lists every final, so the day's slate is complete in one post.

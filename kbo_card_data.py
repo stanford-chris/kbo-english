@@ -131,18 +131,31 @@ def game_note(record):
     return ''
 
 
-def results_input(games, records):
+def results_input(games, records, roster, added):
     out = []
     for g in k.by_start(games):
         a, h = g['awayTeamScore'], g['homeTeamScore']
+        record = records.get(g['gameId'])
+        # The digest now sits each game's decisions under the clubs, so the card
+        # needs them split by side. W and S credit the winning club, L the
+        # losing one; a drawn game (KBO allows ties) records no decision.
+        decisions = pitcher_decisions(record, roster, added) if record else []
+        winner = 'away' if int(a) > int(h) else 'home' if int(h) > int(a) else None
+        won = [d for d in decisions if d[0] in ('W', 'S')]
+        lost = [d for d in decisions if d[0] == 'L']
+        away_pitchers = won if winner == 'away' else lost if winner == 'home' else []
+        home_pitchers = won if winner == 'home' else lost if winner == 'away' else []
         out.append({
             **team_marks(g['awayTeamCode'], 'away'),
             'away_name': k.TEAMS.get(g['awayTeamCode'], g['awayTeamCode']),
             'away_score': a,
+            'away_pitchers': away_pitchers,
             **team_marks(g['homeTeamCode'], 'home'),
             'home_name': k.TEAMS.get(g['homeTeamCode'], g['homeTeamCode']),
             'home_score': h,
-            'note': game_note(records.get(g['gameId'])),
+            'home_pitchers': home_pitchers,
+            'winner': winner,
+            'note': game_note(record),
         })
     return out
 
@@ -337,10 +350,25 @@ def standings_input(rows):
 def results_alt(date_label, rows, postponed=()):
     parts = [f'Final scores for {date_label}.']
     for r in rows:
-        line = (f'{r["away_name"]} {r["away_score"]}, '
-                f'{r["home_name"]} {r["home_score"]}')
+        w = r.get('winner')
+        if w == 'away':
+            line = (f'{r["away_name"]} beat {r["home_name"]} '
+                    f'{r["away_score"]}–{r["home_score"]}')
+        elif w == 'home':
+            line = (f'{r["home_name"]} beat {r["away_name"]} '
+                    f'{r["home_score"]}–{r["away_score"]}')
+        else:
+            line = (f'{r["away_name"]} and {r["home_name"]} tied '
+                    f'{r["away_score"]}–{r["home_score"]}')
+        extra = []
+        decs = (r.get('away_pitchers') or []) + (r.get('home_pitchers') or [])
+        decs.sort(key=lambda d: {'W': 0, 'S': 1, 'L': 2}.get(d[0], 3))
+        if decs:
+            extra.append(', '.join(f'{code} {name}' for code, name, _ in decs))
         if r.get('note'):
-            line += f' ({r["note"]})'
+            extra.append(r['note'])
+        if extra:
+            line += ' (' + '; '.join(extra) + ')'
         parts.append(line + '.')
     if postponed:
         listed = '; '.join(f'{p["away_name"]} at {p["home_name"]}'
@@ -452,7 +480,8 @@ def main(argv):
         if rec:
             records[g['gameId']] = rec
 
-    print(kbo_card.render_results_card(label, results_input(games, records),
+    print(kbo_card.render_results_card(label,
+                                       results_input(games, records, roster, added),
                                        'card_results.png',
                                        postponed=postponed_input(cancelled)))
 

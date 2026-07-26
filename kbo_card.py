@@ -215,42 +215,64 @@ def _head(title, date_label, emoji='🇰🇷 ⚾', subtitle=''):
 # Final scores digest
 # --------------------------------------------------------------------------
 
+# The winner takes the left column; both clubs are set in bold and the score is
+# picked out in red. Each club's pitcher decisions sit beneath its name, one per
+# line (winner's W then any save, loser's L).
 RESULTS_CSS = f"""
 .g{{padding:16px 0 14px}}
 .g + .g{{border-top:1px solid {RULE}}}
 .row{{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;
-  column-gap:16px;font-size:17px}}
-.row .a{{text-align:right}}
-.row .h{{text-align:left}}
-.row .a,.row .h{{font-weight:700}}
-.row .s{{color:{MUTED};white-space:nowrap;letter-spacing:0.04em}}
-.row.ppd .a,.row.ppd .h{{font-weight:400}}
-.row.ppd .s{{font-size:13px}}
+  column-gap:16px}}
+.row .l{{text-align:right}}
+.row .r{{text-align:left}}
+.nm{{font-size:17px;font-weight:700}}
+.s{{font-size:17px;white-space:nowrap;letter-spacing:0.04em}}
+.s b{{color:{RED};font-weight:700}}
+.s .dash{{color:{INK}}}
+.pit{{font-size:12px;color:{MUTED};margin-top:5px;line-height:1.5}}
+.pit b{{color:{INK};font-weight:700}}
+.row.ppd .s{{font-size:13px;color:{MUTED}}}
 .note{{margin-top:9px;text-align:center;font-size:12px;color:{MUTED};
   letter-spacing:0.04em}}
 """
 
 
+def _decisions(pitchers):
+    """A club's pitcher decisions, one per line: 'W Yang (8-4)', then a second
+    line for a save. Only the surname is bold, matching the box score's pitcher
+    row."""
+    return ''.join(
+        f'<div>{_esc(code)} <b>{_esc(name)}</b> ({_esc(detail)})</div>'
+        for code, name, detail in pitchers)
+
+
+def _result_side(g, side, cls):
+    """One club's cell: its mark and name, with its pitcher decisions beneath."""
+    nm = (f'<div class="nm">{_mark(g, side, MARK_ROW)} '
+          f'{_esc(g[f"{side}_name"])}</div>')
+    pitchers = g.get(f'{side}_pitchers') or []
+    pit = f'<div class="pit">{_decisions(pitchers)}</div>' if pitchers else ''
+    return f'<div class="{cls}">{nm}{pit}</div>'
+
+
 def _game_block(g):
-    away = (f'<span class="a">{_mark(g, "away", MARK_ROW)} '
-            f'{_esc(g["away_name"])}</span>')
-    home = (f'<span class="h">{_mark(g, "home", MARK_ROW)} '
-            f'{_esc(g["home_name"])}</span>')
-    score = (f'<span class="s">{g["away_score"]} &mdash; '
-             f'{g["home_score"]}</span>')
-    note = (f'<div class="note">{_esc(g["note"])}</div>'
-            if g.get('note') else '')
-    return f'<div class="g"><div class="row">{away}{score}{home}</div>{note}</div>'
+    winner = g.get('winner')                     # 'away' | 'home' | None (tie)
+    left, right = ('home', 'away') if winner == 'home' else ('away', 'home')
+    left_html = _result_side(g, left, 'l')
+    right_html = _result_side(g, right, 'r')
+    ls, rs = g[f'{left}_score'], g[f'{right}_score']
+    score = (f'<span class="s"><b>{ls}</b> '
+             f'<span class="dash">&mdash;</span> <b>{rs}</b></span>')
+    note = (f'<div class="note">{_esc(g["note"])}</div>' if g.get('note') else '')
+    return (f'<div class="g"><div class="row">{left_html}{score}{right_html}</div>'
+            f'{note}</div>')
 
 
 def _postponed_block(g):
     """A rained-out fixture: 'postponed' sits where the score would, and the
-    clubs are set in regular weight so the row reads as an absence rather than
-    a result (the same convention as the starters card's TBD)."""
-    away = (f'<span class="a">{_mark(g, "away", MARK_ROW)} '
-            f'{_esc(g["away_name"])}</span>')
-    home = (f'<span class="h">{_mark(g, "home", MARK_ROW)} '
-            f'{_esc(g["home_name"])}</span>')
+    clubs keep their away–home order since there is no winner to lead with."""
+    away = _result_side(g, 'away', 'l')
+    home = _result_side(g, 'home', 'r')
     mid = '<span class="s">postponed</span>'
     return f'<div class="g"><div class="row ppd">{away}{mid}{home}</div></div>'
 
