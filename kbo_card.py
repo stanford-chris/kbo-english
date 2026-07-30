@@ -228,7 +228,7 @@ RESULTS_CSS = f"""
 .nm{{font-size:17px;font-weight:700}}
 .s{{font-size:17px;white-space:nowrap;letter-spacing:0.04em}}
 .s b{{color:{RED};font-weight:700}}
-.s .dash{{color:{INK}}}
+.s .dot{{color:#000}}
 .pit{{font-size:12px;color:{MUTED};margin-top:5px;line-height:1.5}}
 .pit b{{color:{INK};font-weight:700}}
 .row.ppd .s{{font-size:13px;color:{MUTED}}}
@@ -262,7 +262,7 @@ def _game_block(g):
     right_html = _result_side(g, right, 'r')
     ls, rs = g[f'{left}_score'], g[f'{right}_score']
     score = (f'<span class="s"><b>{ls}</b> '
-             f'<span class="dash">&mdash;</span> <b>{rs}</b></span>')
+             f'<span class="dot">&bull;</span> <b>{rs}</b></span>')
     note = (f'<div class="note">{_esc(g["note"])}</div>' if g.get('note') else '')
     return (f'<div class="g"><div class="row">{left_html}{score}{right_html}</div>'
             f'{note}</div>')
