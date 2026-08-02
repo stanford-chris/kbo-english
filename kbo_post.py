@@ -14,7 +14,9 @@ Five post types:
   results    A nightly final-scores digest (every game's final in one post),
              then a compact box score threaded underneath per game that wasn't
              already posted live.
-  standings  A daily rank / W-L / games-back table (from the KBO English site).
+  standings  A rank / W-L / games-back table (from the KBO English site), posted
+             each evening once the night's slate is final (polled, and gated so
+             it holds until every game is in and skips off-days).
   leaders    A weekly season-leaders thread: a lead post, then one reply per
              leaderboard (top 3), romanised via the KBO English player pages.
 
@@ -26,9 +28,9 @@ before cards existed, which is why the compose_* functions still build one.
 
 schedule/results/leaders draw their game and stat data from Naver Sports' public
 API; standings and the leaders' name romanisation read the KBO English site.
-schedule runs in the morning, results in the evening, standings daily, leaders
-weekly on Monday (a league off-day). Dedup is by (mode, date) in
-kbo_history.json, so each card posts at most once per day.
+schedule runs in the morning, results and standings in the evening once the
+slate is final, leaders weekly on Monday (a league off-day). Dedup is by
+(mode, date) in kbo_history.json, so each card posts at most once per day.
 
 Data sources (unauthenticated JSON, KST timestamps):
     .../schedule/games?categoryId=kbo&fromDate=...   scores, matchups, times
@@ -50,7 +52,8 @@ Usage:
     python3 kbo_post.py schedule  --dry-run          # tonight's games (today KST)
     python3 kbo_post.py live      --dry-run           # games gone final since last poll
     python3 kbo_post.py results   --dry-run           # tonight's finals
-    python3 kbo_post.py standings --dry-run           # today's standings
+    python3 kbo_post.py standings --dry-run            # tonight's table, if final
+    python3 kbo_post.py standings --dry-run --date 2026-08-02   # a set date, ungated
     python3 kbo_post.py leaders   --dry-run           # season stat leaders
     python3 kbo_post.py results   --dry-run --date 2026-07-16
     python3 kbo_post.py results   --dry-run --all      # ignore history (re-show)
@@ -1015,6 +1018,31 @@ def evaluate_results(candidates, history, ignore_history):
     return None
 
 
+def pick_standings_date(candidates, history, ignore_history):
+    """The date whose standings the evening run should post, newest first, or
+    None if there's nothing new yet. A date settles once all of its games are
+    final (or postponed): a date with a game still in progress is skipped so a
+    later poll catches the late finish, and an off-day with no games falls
+    through to the previous date — which the prior evening already posted, so the
+    walk stops at its history entry rather than re-posting an unchanged table.
+
+    Mirrors evaluate_results (same candidate walk, same midnight-boundary
+    behaviour) because the two gates must agree on when a night is 'done'."""
+    for d in candidates:
+        if f'standings:{d}' in history and not ignore_history:
+            return None                     # newest unposted date is done; stop
+        games = fetch_games(d)
+        noncancel = [g for g in games if not g.get('cancel')]
+        live = [g for g in noncancel if g.get('statusCode') != FINAL]
+        if live:
+            print(f'{d}: {len(live)} game(s) still unfinished — holding.')
+            continue
+        if noncancel:                       # games played and all now final
+            return d
+        print(f'{d}: no games — standings unchanged.')
+    return None
+
+
 def print_segments(mode, segments):
     """Dump each segment (text, length, over-limit flag, card size + alt) to
     stdout — the shared preview used by both threaded emit() and the live path."""
@@ -1059,11 +1087,23 @@ def main():
     history = load_history()
 
     if mode == 'standings':
-        date_str = (argv[argv.index('--date') + 1] if '--date' in argv
-                    else datetime.now(KST).strftime('%Y-%m-%d'))
-        if f'standings:{date_str}' in history and not ignore_history:
-            print(f'standings for {date_str} already posted — skipping.')
-            return
+        # Standings post the day's settled table, so the run is gated on tonight's
+        # slate being complete and is polled through the evening. An explicit
+        # --date posts that date immediately (manual/backfill); otherwise
+        # pick_standings_date holds until all of today's games are final (a later
+        # poll catches a late finish) and skips off-days, where the table hasn't
+        # moved since the previous evening's post.
+        if '--date' in argv:
+            date_str = argv[argv.index('--date') + 1]
+            if f'standings:{date_str}' in history and not ignore_history:
+                print(f'standings for {date_str} already posted — skipping.')
+                return
+        else:
+            date_str = pick_standings_date(
+                results_candidates(argv), history, ignore_history)
+            if not date_str:
+                print('No settled standings to post yet.')
+                return
         rows = fetch_standings()
         if not rows:
             print('standings unavailable (KBO site) — skipping.')
