@@ -18,7 +18,7 @@ Five post types:
              each evening once the night's slate is final (polled, and gated so
              it holds until every game is in and skips off-days).
   leaders    A weekly season-leaders thread: a lead post, then one reply per
-             leaderboard (top 3), romanised via the KBO English player pages.
+             leaderboard (top 5), romanised via the KBO English player pages.
 
 Every post is a rendered PNG card, built by kbo_card via kbo_card_data. The post
 text is the headline alone — the card carries the detail and its alt text
@@ -189,7 +189,7 @@ KEEP_SURNAME_FIRST = {'54843', '56719'}
 # RESULT (final), CANCEL (postponed).
 FINAL = 'RESULT'
 
-# Leaders post — (API category key, display label), rendered top 3 each. The key
+# Leaders post — (API category key, display label), rendered top 5 each. The key
 # is both the leaderboard's `type` and the stat field on each row. includeFields
 # nudges the API to include these; it returns a fixed default set regardless.
 HITTING_LEADERS = [('hitterHra', 'Batting average'),
@@ -461,7 +461,7 @@ def fetch_leaders(season):
     skips rather than crashing."""
     out = {}
     for pt, cats in (('HITTER', HITTING_LEADERS), ('PITCHER', PITCHING_LEADERS)):
-        url = TOP_PLAYERS_API.format(season=season, pt=pt, limit=6,
+        url = TOP_PLAYERS_API.format(season=season, pt=pt, limit=10,
                                      fields=LEADER_FIELDS[pt])
         try:
             data = json.loads(fetch_text(url))
@@ -516,7 +516,7 @@ def fmt_leader_value(key, value):
 
 
 def leader_rows(key, rankings, roster, added):
-    """Up to three (rank, name, teamCode, value) tuples for one leaderboard,
+    """Up to five (rank, name, teamCode, value) tuples for one leaderboard,
     filtering rate stats to qualified players."""
     is_pitcher = key.startswith('pitcher')
     rows = []
@@ -527,13 +527,13 @@ def leader_rows(key, rankings, roster, added):
                             is_pitcher, roster, added)
         rows.append((r.get('ranking'), name, r.get('teamId', ''),
                      fmt_leader_value(key, r.get(key))))
-        if len(rows) == 3:
+        if len(rows) == 5:
             break
     return rows
 
 
 def leader_block(label, rows):
-    """One leaderboard as a text block: a label then three ranked lines, each
+    """One leaderboard as a text block: a label then five ranked lines, each
     'rank. TEAM Player · value' with the team as its short name (e.g. Lotte).
     Names carry the team plainly rather than by emoji, so a reader who doesn't
     know the club emojis can still tell who's who."""
