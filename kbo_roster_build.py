@@ -33,6 +33,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import net_guard
+
 KST = ZoneInfo('Asia/Seoul')
 ROSTER = Path(__file__).parent / 'kbo_roster.json'
 
@@ -93,6 +95,10 @@ def fetch_player(pcode):
 
 
 def main():
+    # Builds run at 7:00, 9:00, 10:45 and 22:00, so 15 minutes of waiting sits
+    # well inside the smallest gap.
+    net_guard.require_network(900)
+
     dates = sys.argv[1:]
     if not dates:
         today = datetime.now(KST)

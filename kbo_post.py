@@ -70,6 +70,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import net_guard
+
 KST = ZoneInfo('Asia/Seoul')
 
 HANDLE = 'kbo-english.bsky.social'
@@ -1084,6 +1086,12 @@ def main():
             else 'live' if 'live' in argv else 'results')
     dry_run = '--dry-run' in argv
     ignore_history = '--all' in argv
+
+    # Five minutes only: live polls every 15 minutes and standings every 30,
+    # so a longer wait would still be running when the next slot fires. Every
+    # mode fetches from Naver before it can decide anything, so gate them all.
+    net_guard.require_network(300)
+
     history = load_history()
 
     if mode == 'standings':
