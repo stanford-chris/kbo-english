@@ -1078,6 +1078,44 @@ def emit(mode, date_str, segments, dry_run, history, count):
     return True
 
 
+# Mode is positional and falls back to 'results', so an unrecognised argument
+# used to be silently ignored and the run posted results LIVE: `kbo_post.py
+# --help` was a live post. seoul-index published a real thread through exactly
+# that trap on 20 July 2026. Validated before main() rather than inside it, so
+# nothing has fetched, decided or posted by the time a bad argv is rejected.
+MODES = {'schedule', 'standings', 'leaders', 'live', 'results'}
+FLAGS = {'--dry-run', '--all'}
+VALUE_FLAGS = {'--date'}
+
+
+def validate_argv(argv):
+    """An error string for an argv that should not run, or None to proceed."""
+    unknown, modes, i = [], [], 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in VALUE_FLAGS:
+            # Bare `--date` used to raise IndexError deep inside a mode branch,
+            # and a malformed one reached the API as a nonsense query.
+            if i + 1 >= len(argv):
+                return f'{arg} needs a date argument (YYYY-MM-DD).'
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', argv[i + 1]):
+                return f'{arg} expects YYYY-MM-DD, got {argv[i + 1]!r}.'
+            i += 2
+            continue
+        if arg in MODES:
+            modes.append(arg)
+        elif arg not in FLAGS:
+            unknown.append(arg)
+        i += 1
+    if unknown:
+        return f'Unknown argument(s): {" ".join(unknown)}.'
+    if len(modes) > 1:
+        # Precedence used to pick one silently; a run meant for two posts made
+        # one, and which one depended on the order of the chain below.
+        return f'More than one mode given: {" ".join(modes)}. Pick one.'
+    return None
+
+
 def main():
     argv = sys.argv[1:]
     mode = ('schedule' if 'schedule' in argv
@@ -1265,6 +1303,11 @@ def record_run(mode):
 
 
 if __name__ == '__main__':
+    _err = validate_argv(sys.argv[1:])
+    if _err:
+        sys.exit(f'{_err}\nRecognised: {" ".join(sorted(MODES))} | '
+                 f'{" ".join(sorted(FLAGS))} | --date YYYY-MM-DD. '
+                 f'Refusing to run (a bare run posts live).')
     main()
     # Only real runs count as a heartbeat; a manual --dry-run should not make a
     # stalled bot look alive.

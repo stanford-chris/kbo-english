@@ -99,7 +99,16 @@ def main():
     # well inside the smallest gap.
     net_guard.require_network(900)
 
+    # Every argument is a date, so an unrecognised one used to be accepted as
+    # one and quietly fetch nothing. This builder does not post, so the failure
+    # was wasted work rather than a bad post, but it failed silently either way.
     dates = sys.argv[1:]
+    bad = [d for d in dates if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', d)]
+    if bad:
+        sys.exit(f'Not a date: {" ".join(bad)}. '
+                 f'Usage: kbo_roster_build.py [YYYY-MM-DD ...] '
+                 f'(no arguments means today and tomorrow).')
+
     if not dates:
         today = datetime.now(KST)
         dates = [today.strftime('%Y-%m-%d'),
