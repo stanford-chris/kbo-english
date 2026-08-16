@@ -29,6 +29,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 # Chrome does the layout. Look for it rather than hardcoding a macOS path, so
@@ -139,8 +140,37 @@ def _crop_to_content(raw_path, out_path):
     return out_path, size
 
 
+# Chrome draws a card in about three seconds. On 15 August 2026 six launches in
+# a row sat silent past the then-only 60s ceiling on a loaded Mini, and all six
+# of those posts went out without their cards — permanently, since a post cannot
+# be re-illustrated after the fact. So an overrun is retried once at a longer
+# ceiling: a spare minute costs a poll that has fifteen very little.
+#
+# RETRY_BUDGET caps the retrying per process, because the other failure mode is
+# a night when nothing will render at all. Without it a five-card run would hold
+# the lock for the better part of twenty minutes chasing cards it was never
+# going to get; with it, the run stops retrying after the first few and finishes
+# as text, which is where it was heading anyway.
+RENDER_TIMEOUT = 60
+RENDER_RETRY_TIMEOUT = 120
+RETRY_BUDGET = 240
+
+_retry_spent = 0.0
+
+
+def _run_chrome(cmd, timeout):
+    """Run Chrome, or None if it outlasted `timeout` and was killed."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+
+
 def _shoot(doc, out_path):
-    """Render an HTML doc to a content-cropped PNG. Returns (out_path, (w, h))."""
+    """Render an HTML doc to a content-cropped PNG. Returns (out_path, (w, h)).
+    Retries once on an overrun, within this process's RETRY_BUDGET."""
+    global _retry_spent
     chrome = find_chrome()
     if not chrome:
         raise CardRenderError(
@@ -157,7 +187,24 @@ def _shoot(doc, out_path):
             f'--default-background-color={SENTINEL}FF',
             f'--screenshot={raw_png}', f'file://{html_path}',
         ]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        r = _run_chrome(cmd, RENDER_TIMEOUT)
+        if r is None:
+            if _retry_spent >= RETRY_BUDGET:
+                raise CardRenderError(
+                    f'Chrome exceeded {RENDER_TIMEOUT}s, and this run has spent '
+                    f'its {RETRY_BUDGET}s retry budget')
+            print(f'  (card render passed {RENDER_TIMEOUT}s — retrying once at '
+                  f'{RENDER_RETRY_TIMEOUT}s)')
+            # The killed attempt can leave a half-written screenshot behind,
+            # which would otherwise be cropped and posted as the card.
+            raw_png.unlink(missing_ok=True)
+            started = time.monotonic()
+            r = _run_chrome(cmd, RENDER_RETRY_TIMEOUT)
+            _retry_spent += time.monotonic() - started
+            if r is None:
+                raise CardRenderError(
+                    f'Chrome timed out twice ({RENDER_TIMEOUT}s, then '
+                    f'{RENDER_RETRY_TIMEOUT}s)')
         if not raw_png.exists():
             raise CardRenderError(
                 f'Chrome produced no image (exit {r.returncode}): '

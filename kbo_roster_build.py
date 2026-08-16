@@ -26,6 +26,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -33,6 +34,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import kbo_lock
 import net_guard
 
 KST = ZoneInfo('Asia/Seoul')
@@ -95,6 +97,14 @@ def fetch_player(pcode):
 
 
 def main():
+    # The 22:00 build shares its slot with the first standings poll, and
+    # kbo_post writes this same roster file when it romanises a new name, so
+    # both have to queue rather than interleave. Four builds a day means a
+    # skipped one costs nothing.
+    if not kbo_lock.hold('roster', 600):
+        print('another KBO run is still going — skipping this roster build.')
+        return
+
     # Builds run at 7:00, 9:00, 10:45 and 22:00, so 15 minutes of waiting sits
     # well inside the smallest gap.
     net_guard.require_network(900)
@@ -142,7 +152,16 @@ def main():
             print(f'  + {pc}: {name}')
 
     if added:
-        ROSTER.write_text(json.dumps(roster, ensure_ascii=False, indent=2, sort_keys=True))
+        # Temp file and rename, matching kbo_post.write_json_atomic: a plain
+        # write leaves a truncated roster behind if the build is killed partway.
+        tmp = ROSTER.with_name(f'{ROSTER.name}.{os.getpid()}.tmp')
+        try:
+            tmp.write_text(json.dumps(roster, ensure_ascii=False, indent=2,
+                                      sort_keys=True))
+            os.replace(tmp, ROSTER)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
     print(f'Roster: {before} -> {len(roster)} pitchers ({added} added).')
 
 

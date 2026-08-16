@@ -70,9 +70,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import kbo_lock
 import net_guard
 
 KST = ZoneInfo('Asia/Seoul')
+
+# How long each mode will wait for a run already in progress before giving up
+# its slot. live and standings poll every 15 and 30 minutes and results twice a
+# night, so skipping costs nothing the next slot won't pick up; schedule runs
+# once a day and leaders once a week, so they wait rather than lose the post.
+LOCK_WAIT = {'live': 240, 'standings': 240, 'results': 240,
+             'schedule': 900, 'leaders': 900}
 
 HANDLE = 'kbo-english.bsky.social'
 KEYCHAIN_SERVICE = 'kbobot-bluesky'
@@ -210,10 +218,22 @@ QUALIFIED_ONLY = {'hitterHra', 'pitcherEra'}
 
 def write_json_atomic(path, data, **dumps_kwargs):
     """Write JSON via a sibling temp file and an atomic rename, so a crash
-    mid-write can never leave a truncated history, roster or state file behind."""
-    tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(json.dumps(data, **dumps_kwargs))
-    os.replace(tmp, path)
+    mid-write can never leave a truncated history, roster or state file behind.
+
+    The temp name carries the PID. It used to be a fixed '<name>.tmp', which is
+    atomic against a crash but not against a second run: on 15 August 2026 an
+    overrunning live poll and the standings run wrote that same sibling at once,
+    each renamed it out from under the other, and kbo_state.json was left torn —
+    which killed the heartbeat for a day. kbo_lock now keeps runs from
+    overlapping at all; a unique name keeps the write safe if one ever slips
+    past it."""
+    tmp = path.with_name(f'{path.name}.{os.getpid()}.tmp')
+    try:
+        tmp.write_text(json.dumps(data, **dumps_kwargs))
+        os.replace(tmp, path)
+    except BaseException:                       # never leave the temp behind
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def team_label(code):
@@ -1125,6 +1145,14 @@ def main():
     dry_run = '--dry-run' in argv
     ignore_history = '--all' in argv
 
+    # Taken before the network wait, not after, so a run stuck waiting for the
+    # net holds the slot rather than letting a second run through to race it on
+    # kbo_history.json. A dry run touches no shared state, so it never queues
+    # behind a real one.
+    if not dry_run and not kbo_lock.hold(mode, LOCK_WAIT[mode]):
+        print(f'{mode}: another KBO run is still going — skipping this slot.')
+        return
+
     # Five minutes only: live polls every 15 minutes and standings every 30,
     # so a longer wait would still be running when the next slot fires. Every
     # mode fetches from Naver before it can decide anything, so gate them all.
@@ -1294,7 +1322,15 @@ def record_run(mode):
     'last completed a run' can. Never let this break a run that already
     succeeded."""
     try:
-        state = json.loads(STATE.read_text()) if STATE.exists() else {}
+        try:
+            state = json.loads(STATE.read_text()) if STATE.exists() else {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # A damaged state file used to disable the heartbeat permanently:
+            # every later run raised here and reported nothing. The file holds
+            # only the last run's time and mode, both of which this call is
+            # about to overwrite, so there is nothing to salvage — start again.
+            print('(heartbeat state unreadable — rewriting it)')
+            state = {}
         state['last_run_at'] = datetime.now(timezone.utc).isoformat()
         state['last_run_mode'] = mode
         write_json_atomic(STATE, state, ensure_ascii=False, indent=2, sort_keys=True)

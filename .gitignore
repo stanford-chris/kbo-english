@@ -26,5 +26,10 @@ card_*.png
 # Club logos: third-party marks, fetched and cached at runtime
 logos/
 
-# Leftover from an interrupted atomic JSON write (write_json_atomic)
+# Leftover from an interrupted atomic JSON write (write_json_atomic). The temp
+# name carries the writer's PID, so the pattern has to allow one in the middle.
 *.json.tmp
+*.json.*.tmp
+
+# Run lock (kbo_lock) — one KBO job at a time
+.kbo_run.lock
