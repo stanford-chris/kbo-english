@@ -6,6 +6,7 @@ kbo_roster.json
 
 # Backups
 *.bak.json
+*.bak
 
 # Logs
 *.log
