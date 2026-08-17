@@ -10,7 +10,7 @@ to content, so no height is ever guessed.
     render_box_score_card()  one finished game, with a traditional line score
     render_schedule_card()   tonight's fixtures and their start times
     render_starters_card()   tonight's probable starting pitchers
-    render_leaders_card()    one leaderboard's top three
+    render_leaders_card()    one leaderboard's leaders
     render_standings_card()  the league table, with the postseason cut line
 
 Cards are rendered on a magenta sentinel background and cropped, so a 4-game day
@@ -604,7 +604,8 @@ table.ld td.vl{{text-align:right;font-weight:700;white-space:nowrap;
 
 def render_leaders_card(date_label, title, rows, out_path,
                         subtitle='Season leaders'):
-    """One leaderboard: a stat's top three. `rows` is a list of dicts:
+    """One leaderboard: a stat's leaders, as many rows as it is given. `rows`
+    is a list of dicts:
         {rank, team_emoji/team_logo, name, value}
     Ranks come from the API as-is, so a three-way tie prints 1, 1, 1 rather
     than being renumbered. Returns (path, (w, h))."""

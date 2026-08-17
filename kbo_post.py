@@ -214,6 +214,13 @@ LEADER_FIELDS = {'HITTER': 'offenseHra,offenseHr,offenseRbi',
 # Rate-stat boards are limited to qualified players (batting-title / ERA-title);
 # counting-stat boards (HR, RBI, W, SV, K) include everyone.
 QUALIFIED_ONLY = {'hitterHra', 'pitcherEra'}
+# Names shown per board, and how many rows to ask Naver for. The fetch is
+# deliberately double the display count: the rate-stat boards drop unqualified
+# players after the fetch, so asking for exactly five would short the board in
+# early season, when few players have the plate appearances or innings. Twice
+# the rows costs nothing — it is still one call per player type.
+LEADER_COUNT = 5
+LEADER_FETCH = LEADER_COUNT * 2
 
 
 def write_json_atomic(path, data, **dumps_kwargs):
@@ -483,7 +490,7 @@ def fetch_leaders(season):
     skips rather than crashing."""
     out = {}
     for pt, cats in (('HITTER', HITTING_LEADERS), ('PITCHER', PITCHING_LEADERS)):
-        url = TOP_PLAYERS_API.format(season=season, pt=pt, limit=6,
+        url = TOP_PLAYERS_API.format(season=season, pt=pt, limit=LEADER_FETCH,
                                      fields=LEADER_FIELDS[pt])
         try:
             data = json.loads(fetch_text(url))
@@ -538,8 +545,8 @@ def fmt_leader_value(key, value):
 
 
 def leader_rows(key, rankings, roster, added):
-    """Up to three (rank, name, teamCode, value) tuples for one leaderboard,
-    filtering rate stats to qualified players."""
+    """Up to LEADER_COUNT (rank, name, teamCode, value) tuples for one
+    leaderboard, filtering rate stats to qualified players."""
     is_pitcher = key.startswith('pitcher')
     rows = []
     for r in rankings:
@@ -549,13 +556,13 @@ def leader_rows(key, rankings, roster, added):
                             is_pitcher, roster, added)
         rows.append((r.get('ranking'), name, r.get('teamId', ''),
                      fmt_leader_value(key, r.get(key))))
-        if len(rows) == 3:
+        if len(rows) == LEADER_COUNT:
             break
     return rows
 
 
 def leader_block(label, rows):
-    """One leaderboard as a text block: a label then three ranked lines, each
+    """One leaderboard as a text block: a label then the ranked lines, each
     'rank. TEAM Player · value' with the team as its short name (e.g. Lotte).
     Names carry the team plainly rather than by emoji, so a reader who doesn't
     know the club emojis can still tell who's who."""
