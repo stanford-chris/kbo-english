@@ -11,7 +11,7 @@ Posts to [@kbo-english.bsky.social](https://bsky.app/profile/kbo-english.bsky.so
 - results — a nightly final-scores digest, with a compact box score threaded per
   game (evening).
 - standings — a daily rank / W-L / games-back table.
-- leaders — a weekly season-leaders thread, top 3 in each core hitting and
+- leaders — a weekly season-leaders thread, top 5 in each core hitting and
   pitching stat (Mondays, a league off-day).
 
 Data comes from Naver Sports' public JSON API and the KBO English site. Team

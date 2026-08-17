@@ -17,8 +17,8 @@ Five post types:
   standings  A rank / W-L / games-back table (from the KBO English site), posted
              each evening once the night's slate is final (polled, and gated so
              it holds until every game is in and skips off-days).
-  leaders    A weekly season-leaders thread: a lead post, then one reply per
-             leaderboard (top 3), romanised via the KBO English player pages.
+  leaders    A weekly season-leaders thread: one post per leaderboard (top 5),
+             romanised via the KBO English player pages.
 
 Every post is a rendered PNG card, built by kbo_card via kbo_card_data. The post
 text is the headline alone — the card carries the detail and its alt text
@@ -199,7 +199,7 @@ KEEP_SURNAME_FIRST = {'54843', '56719'}
 # RESULT (final), CANCEL (postponed).
 FINAL = 'RESULT'
 
-# Leaders post — (API category key, display label), rendered top 3 each. The key
+# Leaders post — (API category key, display label), LEADER_COUNT rows each. The key
 # is both the leaderboard's `type` and the stat field on each row. includeFields
 # nudges the API to include these; it returns a fixed default set regardless.
 HITTING_LEADERS = [('hitterHra', 'Batting average'),
