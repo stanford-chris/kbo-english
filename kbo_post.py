@@ -417,7 +417,7 @@ def display_name(starter, roster):
     isn't in the table yet (so the post never depends on a live KBO lookup)."""
     pcode = str(starter.get('pcode') or '')
     entry = roster.get(pcode)
-    if entry:
+    if named(entry):
         return order_name(entry['name'], entry.get('foreign', False), pcode)
     return starter['name_ko']
 
@@ -515,22 +515,47 @@ def fetch_kbo_name(pcode, is_pitcher):
     m = re.search(r'<b>Name</b>\s*:\s*([^<]+?)\s*<', html)
     if not m:
         return None
+    name = m.group(1).strip()
+    # A page that renders the Name label with nothing after it still matches:
+    # the capture takes the whitespace and .strip() empties it. Returning that
+    # as an entry is worse than returning nothing, because the caller CACHES
+    # it — see resolve_name. Bruce Zimmermann was stored as {'name': '',
+    # 'foreign': False} that way and shipped a blank name on every card he
+    # appeared on, while a fresh fetch of the same page worked fine.
+    if not name:
+        return None
     sal = re.search(r'<b>Salary</b>\s*:\s*([^<]+)<', html)
-    return {'name': m.group(1).strip(), 'foreign': bool(sal and '$' in sal.group(1))}
+    return {'name': name, 'foreign': bool(sal and '$' in sal.group(1))}
+
+
+def named(entry):
+    """True if a roster entry actually carries a name.
+
+    `if entry:` is not the same test and was the bug: an entry is a dict, so
+    {'name': '', 'foreign': False} is truthy and counted as a hit. That made a
+    single bad fetch permanent — the cached blank suppressed the re-fetch AND
+    the Korean-name fallback, so the player shipped as an empty string on every
+    card and in every alt text until someone edited the roster by hand.
+    """
+    return bool(entry and (entry.get('name') or '').strip())
 
 
 def resolve_name(pcode, name_ko, is_pitcher, roster, added):
     """Romanised display name for a leaderboard player, fetching + caching into
     the roster on a miss (appending (pcode, entry) to `added`), or the Korean
-    name if the KBO lookup fails."""
+    name if the KBO lookup fails.
+
+    A cached entry with no name counts as a miss, so a bad fetch heals itself
+    on the next run instead of sticking."""
     pcode = str(pcode or '')
     entry = roster.get(pcode)
-    if entry is None and pcode:
-        entry = fetch_kbo_name(pcode, is_pitcher)
-        if entry:
+    if not named(entry) and pcode:
+        fetched = fetch_kbo_name(pcode, is_pitcher)
+        if fetched:
+            entry = fetched
             roster[pcode] = entry
             added.append((pcode, entry))
-    if entry:
+    if named(entry):
         return order_name(entry['name'], entry.get('foreign', False), pcode)
     return name_ko
 
