@@ -289,9 +289,15 @@ def fetch_games(date_str):
 
 def fetch_starters(game_id):
     """(away, home) probable starters for one game, each a dict with the Korean
-    name and season w / l / era, or None if not yet announced. Returns
-    (None, None) on any failure so a missing preview degrades to no pitcher
-    line rather than crashing the run."""
+    name, season w / l / era, his pitch mix and his record against tonight's
+    opponent, or None if not yet announced. Returns (None, None) on any failure
+    so a missing preview degrades to no pitcher line rather than crashing the
+    run.
+
+    The mix and the opponent line come out of the same preview response the
+    starter's name already needed, so they cost no extra request. Both are
+    optional: a pitcher with no mix published, or who has never faced tonight's
+    opponent, simply carries fewer rows on the card."""
     try:
         pd = json.loads(fetch_text(PREVIEW_API.format(gid=game_id)))
         pd = pd.get('result', {}).get('previewData', {})
@@ -305,8 +311,22 @@ def fetch_starters(game_id):
         if not name:
             return None
         st = s.get('currentSeasonStats') or {}
+        # Naver ranks the mix already; three pitches is what fits a column.
+        mix = [(m.get('type'), m.get('pit_rt'))
+               for m in (s.get('currentPitKindStats') or [])[:3]
+               if m.get('type') and m.get('pit_rt') is not None]
+        # gameCount arrives as an int or a string depending on the game, and is
+        # 0 for a pitcher who has not faced this opponent — no line, not 0-0.
+        opp = s.get('currentSeasonStatsOnOpponents') or {}
+        try:
+            faced = int(opp.get('gameCount') or 0)
+        except (TypeError, ValueError):
+            faced = 0
         return {'name_ko': name, 'pcode': info.get('pCode'),
-                'w': st.get('w'), 'l': st.get('l'), 'era': st.get('era')}
+                'w': st.get('w'), 'l': st.get('l'), 'era': st.get('era'),
+                'mix': mix,
+                'vs': {'w': opp.get('w'), 'l': opp.get('l'),
+                       'era': opp.get('era')} if faced else None}
 
     return starter('awayStarter'), starter('homeStarter')
 

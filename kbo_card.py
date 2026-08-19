@@ -387,10 +387,14 @@ def render_schedule_card(date_label, games, out_path, title='Tonight’s Games',
 # compare them without crossing the card. The gutter holds '@', not a middot:
 # this card travels in its own post now, so nothing above it says which pitcher
 # is the visitor and column position alone gives the reader no key.
+# One mirrored column: the card's content width less the two grid gaps and the
+# '@' between them. The pitch-mix row is measured against this.
+STARTER_COL_WIDTH = (CARD_WIDTH - 60 - 14 * 2 - 8) // 2
+
 STARTERS_CSS = f"""
 .gm{{padding:15px 0 13px}}
 .gm + .gm{{border-top:1px solid {RULE}}}
-.duo{{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+.duo{{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;
   column-gap:14px}}
 .duo .a{{text-align:right}}
 .duo .h{{text-align:left}}
@@ -399,6 +403,13 @@ STARTERS_CSS = f"""
 .duo .nm{{font-size:16px;font-weight:700;margin-top:5px;line-height:19px}}
 .duo .rec{{font-size:12px;color:{MUTED};margin-top:3px;letter-spacing:0.04em}}
 .duo .tbd{{font-weight:400;color:{MUTED}}}
+/* The opponent line leads, in red: a starter's record against tonight's club
+   is the number that makes the fixture, and it is routinely nothing like his
+   season line. Season W-L then sits under it as the baseline to read it
+   against. */
+.duo .vs{{font-size:12px;color:{RED};margin-top:5px;letter-spacing:0.02em;
+  white-space:nowrap}}
+.duo .mix{{color:{INK};margin-top:6px;letter-spacing:0.02em;white-space:nowrap}}
 """
 
 
@@ -409,14 +420,26 @@ def _starter_col(g, side, cls):
     name = g.get(f'{side}_pitcher') or 'TBD'
     nm_cls = 'nm' if g.get(f'{side}_pitcher') else 'nm tbd'
     rec = g.get(f'{side}_record') or ''
+    vs = g.get(f'{side}_vs') or ''
+    mix = g.get(f'{side}_mix') or ''
+    rows = ''
+    if vs:
+        rows += f'<div class="vs">{_esc(vs)}</div>'
+    rows += f'<div class="rec">{_esc(rec)}</div>'
+    if mix:
+        # Spelled-out pitch names can outrun the column: 'Fastball 40%
+        # Curveball 17% Two-seam 15%' is 41 characters against 40 of room, and
+        # that line has genuinely gone out. Shrink rather than clip or wrap.
+        size = _fit_size(mix, base=11, floor=9, width=STARTER_COL_WIDTH)
+        rows += f'<div class="mix" style="font-size:{size}px">{_esc(mix)}</div>'
     return (f'<div class="{cls}">{_mark(g, side, MARK_ROW)}'
-            f'<div class="{nm_cls}">{_esc(name)}</div>'
-            f'<div class="rec">{_esc(rec)}</div></div>')
+            f'<div class="{nm_cls}">{_esc(name)}</div>{rows}</div>')
 
 
 def render_starters_card(date_label, games, out_path,
                          title='Probable Starters',
-                         subtitle='W-L and E.R.A. this season'):
+                         subtitle='Record against tonight’s opponent, '
+                                  'season W-L and E.R.A., pitch mix'):
     """The probable-starters post. `games` is a list of dicts:
         {away_emoji/away_logo, away_pitcher, away_record, home_...}
     `record` is '2-4, 4.69', or '' when the API has no season line for him yet —

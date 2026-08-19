@@ -208,10 +208,81 @@ def pitcher_decisions(record, roster, added):
     return parts
 
 
+# '김도영37호(9회3점 이민우)' — batter, his season total, then the inning, the
+# runs it drove in and the pitcher who allowed it. Naver publishes this in the
+# same /record response the box score already needs, so reading it costs
+# nothing extra.
+HR_ENTRY = re.compile(r'(?P<who>\S+?)(?P<num>\d+)호\('
+                      r'(?P<inn>\d+)회(?P<runs>\d+)점\s*(?P<off>[^)]*)\)')
+
+
+def ordinal(n):
+    """1 -> '1st'. Used for innings, which are read as ordinals aloud."""
+    if 10 <= n % 100 <= 20:
+        return f'{n}th'
+    return f'{n}' + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+
+def game_name_index(record):
+    """Korean name -> (pcode, is_pitcher) for everyone who appeared.
+
+    etcRecords names players in Korean and carries no player codes, so it
+    cannot be romanised on its own. The box score in the same payload carries
+    both, which is what makes this work. ⚠️ The key differs by role — batters
+    use 'playerCode', pitchers use 'pcode' — and reading only the first leaves
+    every 'off X' in Hangul."""
+    idx = {}
+    for key, is_pitcher in (('battersBoxscore', False),
+                            ('pitchersBoxscore', True)):
+        for side in ('away', 'home'):
+            for row in (record.get(key) or {}).get(side) or []:
+                name = row.get('name')
+                pcode = row.get('playerCode') or row.get('pcode')
+                if name and pcode:
+                    idx.setdefault(name, (str(pcode), is_pitcher))
+    return idx
+
+
+def hr_details(record, roster, added):
+    """{korean batter name: ['(37) 9th, 3R off Lee Min Woo', ...]} — one entry
+    per home run, so a two-homer game lists both. Empty when etcRecords has no
+    home-run line, which is how the caller falls back to bare names."""
+    raw = ''
+    for row in record.get('etcRecords') or []:
+        if row.get('how') == '홈런':
+            raw = row.get('result') or ''
+            break
+    idx = game_name_index(record)
+
+    def english(name_ko):
+        hit = idx.get(name_ko)
+        if not hit:
+            return name_ko
+        pcode, is_pitcher = hit
+        return k.resolve_name(pcode, name_ko, is_pitcher, roster, added) \
+            or name_ko
+
+    out = {}
+    for m in HR_ENTRY.finditer(raw):
+        detail = (f'({m.group("num")}) {ordinal(int(m.group("inn")))}, '
+                  f'{m.group("runs")}R')
+        off = m.group('off').strip()
+        if off:
+            detail += f' off {english(off)}'
+        out.setdefault(m.group('who'), []).append(detail)
+    return out
+
+
 def hr_groups(game, record, roster, added):
     """Home runs as one group per team, each carrying that club's mark once
     rather than repeating it per batter:
-        [{team_emoji/team_logo, 'names': 'Park Chan Ho, An Jae Seok (2)'}]"""
+        [{team_emoji/team_logo, 'names': 'Kim Do Yeong (37) 9th, 3R off Lee
+          Min Woo, Harold Castro (13) 3rd, 1R off Owen White'}]
+
+    Falls back to the bare 'Park Chan Ho, An Jae Seok (2)' form for any batter
+    etcRecords does not describe, so a parsing miss costs detail rather than
+    the row."""
+    details = hr_details(record, roster, added)
     groups = []
     for side, code in (('away', game['awayTeamCode']),
                        ('home', game['homeTeamCode'])):
@@ -220,7 +291,12 @@ def hr_groups(game, record, roster, added):
             if b.get('hr', 0) > 0:
                 name = k.resolve_name(b.get('playerCode'), b.get('name', ''),
                                       False, roster, added)
-                names.append(name + (f' ({b["hr"]})' if b['hr'] > 1 else ''))
+                found = details.get(b.get('name', ''))
+                if found:
+                    names += [f'{name} {d}' for d in found]
+                else:
+                    names.append(name
+                                 + (f' ({b["hr"]})' if b['hr'] > 1 else ''))
         if names:
             groups.append({**team_marks(code, 'team'),
                            'team_name': k.TEAMS.get(code, code),
@@ -296,9 +372,39 @@ def split_record(text):
     return text, ''
 
 
+# Naver's pitch codes, spelled out. Abbreviations were rejected: this card is
+# read by people meeting the KBO for the first time, the same reason the
+# leaders card carries short club names rather than the club emoji.
+PITCH_NAMES = {'FAST': 'Fastball', 'TWOS': 'Two-seam', 'CUTT': 'Cutter',
+               'SINK': 'Sinker', 'SLID': 'Slider', 'SWEE': 'Sweeper',
+               'CURV': 'Curveball', 'FORK': 'Forkball', 'CHUP': 'Changeup',
+               'KNUC': 'Knuckleball'}
+
+
+def pitch_mix(starter):
+    """'Fastball 45%  Changeup 24%  Cutter 18%', or '' if none is published.
+    An unrecognised code is printed as-is rather than dropped, so a pitch type
+    Naver adds shows up as a prompt to name it instead of vanishing."""
+    if not starter:
+        return ''
+    return '  '.join(f'{PITCH_NAMES.get(kind, kind)} {round(rate)}%'
+                     for kind, rate in starter.get('mix') or [])
+
+
+def versus(starter, opp_code):
+    """'vs Hanwha 3-0, 1.29' — the starter's record against tonight's
+    opponent, or '' when he has not faced them this season."""
+    vs = (starter or {}).get('vs')
+    if not vs:
+        return ''
+    return (f'vs {k.SHORT_NAMES.get(opp_code, opp_code)} '
+            f'{vs["w"]}-{vs["l"]}, {vs["era"]}')
+
+
 def starters_input(games, roster):
-    """One row per fixture for the probable-starters card: each side's pitcher
-    and his season W-L and E.R.A., split apart for the card's two rows."""
+    """One row per fixture for the probable-starters card: each side's pitcher,
+    his record against tonight's opponent, his season W-L and E.R.A., and his
+    pitch mix — one row each, in that order."""
     rows = []
     for g in k.by_start(games):
         away, home = k.fetch_starters(g['gameId'])
@@ -308,9 +414,13 @@ def starters_input(games, roster):
             **team_marks(g['awayTeamCode'], 'away'),
             'away_name': k.TEAMS.get(g['awayTeamCode'], g['awayTeamCode']),
             'away_pitcher': away_name, 'away_record': away_rec,
+            'away_mix': pitch_mix(away),
+            'away_vs': versus(away, g['homeTeamCode']),
             **team_marks(g['homeTeamCode'], 'home'),
             'home_name': k.TEAMS.get(g['homeTeamCode'], g['homeTeamCode']),
             'home_pitcher': home_name, 'home_record': home_rec,
+            'home_mix': pitch_mix(home),
+            'home_vs': versus(home, g['awayTeamCode']),
         })
     return rows
 
@@ -423,9 +533,17 @@ def starters_alt(date_label, rows):
             if not name:
                 parts.append(f'{r[f"{side}_name"]}, starter not yet named.')
                 continue
+            bits = [f'{r[f"{side}_name"]}, {name}']
+            vs = r.get(f'{side}_vs')
+            if vs:
+                bits.append(vs.replace('vs ', 'against ', 1))
             rec = r.get(f'{side}_record')
-            parts.append(f'{r[f"{side}_name"]}, {name}'
-                         + (f', {rec}.' if rec else '.'))
+            if rec:
+                bits.append(f'{rec} this season')
+            mix = r.get(f'{side}_mix')
+            if mix:
+                bits.append(mix.replace('  ', ', '))
+            parts.append(', '.join(bits) + '.')
     return ' '.join(parts)
 
 
