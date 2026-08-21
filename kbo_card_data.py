@@ -425,6 +425,40 @@ def starters_input(games, roster):
     return rows
 
 
+# Bluesky fits a lone image inside a square box — 515 px on the web client,
+# 290 on mobile, and neither moves with the viewport width. A card wider than
+# it is tall hits the width cap and is shown at the full 515; a card taller
+# than it is wide hits the *height* cap instead and its width falls out
+# proportionally. The five-fixture starters card renders 1240x1721, which the
+# client draws 371 px wide against the fixtures card's 515, so it reads as a
+# narrower post sitting under a wider one. Three fixtures (1240x1155) is the
+# last count that stays landscape; four is already 1240x1438 and loses width.
+#
+# ⚠️ Widening CARD_WIDTH does not fix this. A height-capped image is scaled by
+# its height, so the apparent text size is 515/height either way: taking the
+# card to 880 px wide leaves the type fractionally *smaller*, not larger.
+# Fewer rows per card is the only lever, which is why this splits the post.
+STARTERS_PER_CARD = 3
+
+
+def starters_chunks(rows, per_card=STARTERS_PER_CARD):
+    """Split the starters rows into balanced groups of at most `per_card`.
+
+    Balanced, not greedy: four fixtures go 2+2 rather than 3+1, because a
+    lone-fixture card threaded under a full one reads as an afterthought
+    rather than as the second half of a pair. Five go 3+2, six 3+3."""
+    n = len(rows)
+    if n <= per_card:
+        return [list(rows)]
+    groups = -(-n // per_card)                  # ceil
+    out, start = [], 0
+    for i in range(groups):
+        size = n // groups + (1 if i < n % groups else 0)
+        out.append(list(rows[start:start + size]))
+        start += size
+    return out
+
+
 def leaders_input(rows):
     """kbo_post's (rank, name, teamCode, value) tuples -> card rows."""
     return [{'rank': rank, 'name': name, 'value': value,
@@ -525,8 +559,15 @@ def box_alt(date_label, game):
     return ' '.join(parts)
 
 
-def starters_alt(date_label, rows):
-    parts = [f'Probable starting pitchers, {date_label}.']
+def starters_alt(date_label, rows, part=None, of=None):
+    """`part`/`of` name this card's place when the fixtures are split across
+    more than one, so a screen reader is told the same thing the card's own
+    title says rather than hearing two openings that sound identical."""
+    head = f'Probable starting pitchers, {date_label}.'
+    if of and of > 1:
+        head = (f'Probable starting pitchers, {date_label}, '
+                f'part {part} of {of}.')
+    parts = [head]
     for r in rows:
         for side in ('away', 'home'):
             name = r.get(f'{side}_pitcher')

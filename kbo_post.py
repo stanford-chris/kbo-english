@@ -939,11 +939,11 @@ def attach_schedule_cards(date_str, playable, roster, segments):
     """The schedule thread, one card per post: tonight's fixtures, then the
     probable starters threaded beneath them.
 
-    The fixtures card leaves the pitchers off, because the reply below it is
+    The fixtures card leaves the pitchers off, because the replies below it are
     given over to them. `segments` is what compose_schedule built — a matchups
-    post followed by one or more starters replies — and each is reduced to its
-    headline as its card renders. If the starters card fails, its replies keep
-    the text they already had."""
+    post followed by one or more starters replies — and the whole tail is
+    replaced by one carded reply per group of at most three fixtures. If any
+    starters card fails to render, every reply keeps the text it already had."""
     import kbo_card
     import kbo_card_data as data
     label = data.card_date(date_str)
@@ -958,13 +958,30 @@ def attach_schedule_cards(date_str, playable, roster, segments):
         return out
 
     starters = data.starters_input(playable, roster)
-    card = build_card(
-        lambda path: kbo_card.render_starters_card(label, starters, path),
-        data.starters_alt(label, starters))
-    if not card:
+    # Split across as many replies as it takes to keep every card landscape:
+    # see starters_chunks. A full five-fixture slate on one card is portrait,
+    # and Bluesky shows a portrait image at 371 px against a landscape one's
+    # 515, so the post looked narrower than the fixtures card above it.
+    chunks = data.starters_chunks(starters)
+    total = len(chunks)
+    cards = []
+    for i, chunk in enumerate(chunks, 1):
+        # The counter only appears when there is something to count: a single
+        # card should not be titled '(1 of 1)'.
+        title = ('Probable Starters' if total == 1
+                 else f'Probable Starters ({i} of {total})')
+        cards.append(build_card(
+            lambda path, chunk=chunk, title=title:
+                kbo_card.render_starters_card(label, chunk, path, title=title),
+            data.starters_alt(label, chunk, part=i, of=total)))
+    # All or nothing. The text replies below were chunked by character count,
+    # which splits at a different place, so carding some groups and leaving the
+    # rest as text would repeat some fixtures and drop others.
+    if not all(cards):
         return out
-    # One card replaces however many replies the text needed to fit the limit.
-    return out[:1] + [card_only(out[1], card)]
+    # One card per group replaces however many replies the text needed. Each
+    # card carries its whole post, and only the fixtures post is tagged.
+    return out[:1] + [('', [], card) for card in cards]
 
 
 def attach_standings_card(date_str, rows, segments):
