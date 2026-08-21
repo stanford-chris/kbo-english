@@ -26,6 +26,7 @@ Raises CardRenderError on any failure so the poster can fall back to plaintext.
 import base64
 import html
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -167,9 +168,64 @@ def _run_chrome(cmd, timeout):
         return None
 
 
-def _shoot(doc, out_path):
+# Bluesky fits a lone image inside a square box and scales it to fit: 515 px
+# on the web client, 290 on mobile, neither moving with the viewport width
+# (measured at 375, 1280 and 1600 px on 21 August 2026). A landscape card hits
+# the width cap and is drawn at the full 515. A card taller than it is wide
+# hits the HEIGHT cap instead, and its width falls out proportionally — so it
+# is drawn narrower than every other card in the feed.
+FIT_BOX = 515
+
+
+def _observe_portrait(label, text):
+    """Record the finding in the shared estate log, so a card that has gone
+    portrait reaches the Sunday review rather than only whoever reads a launchd
+    log. The key carries the card's name, so two cards going portrait are two
+    findings rather than one that looks like a repeat.
+
+    Best-effort twice over: posting must never fail because note-taking did,
+    and this repo must not require ~/Scripts to be present at all."""
+    observe = Path.home() / 'Scripts' / 'observe.py'
+    if not observe.exists():
+        return
+    key = re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-') or 'card'
+    try:
+        subprocess.run(
+            ['python3', str(observe), 'add', '--source', 'kbo-card',
+             '--kind', 'finding', '--key', f'kbo-card-portrait-{key}', text],
+            capture_output=True, text=True, check=False, timeout=20)
+    except Exception:      # noqa: BLE001 — never let the notebook break a post
+        pass
+
+
+def _check_landscape(label, w, h):
+    """Report a card that will be shown narrowed, and let it go out anyway.
+
+    ⚠️ Deliberately not a CardRenderError. Raising here would drop the post to
+    the plaintext fallback, trading the bot's entire look for a cosmetic loss
+    of width — a far worse outcome than the thing being guarded against. The
+    card ships; the condition becomes visible.
+
+    It exists because this is invisible from the code and was both times found
+    by eye. 8c10688 added two rows per pitcher and the starters card shipped at
+    371 px for two days; the standings card had been portrait for as long as
+    there had been ten clubs in it, and nobody had ever remarked on it."""
+    if h <= w:
+        return
+    shown = round(FIT_BOX * w / h)
+    text = (f'{label} card is portrait ({w}x{h}, ratio {w / h:.3f}): Bluesky '
+            f'will draw it {shown}px wide, not {FIT_BOX}. Shorten it — '
+            f'widening does not help, because a height-capped card is scaled '
+            f'by {FIT_BOX}/height however wide it is.')
+    print(f'  !! {text}')
+    _observe_portrait(label, text)
+
+
+def _shoot(doc, out_path, label='card'):
     """Render an HTML doc to a content-cropped PNG. Returns (out_path, (w, h)).
-    Retries once on an overrun, within this process's RETRY_BUDGET."""
+    Retries once on an overrun, within this process's RETRY_BUDGET.
+
+    `label` names the card in the portrait warning and in its observation key."""
     global _retry_spent
     chrome = find_chrome()
     if not chrome:
@@ -210,6 +266,7 @@ def _shoot(doc, out_path):
                 f'Chrome produced no image (exit {r.returncode}): '
                 f'{(r.stderr or r.stdout or "").strip()[:200]}')
         _, size = _crop_to_content(raw_png, out_path)
+    _check_landscape(label, *size)
     return out_path, size
 
 
@@ -337,7 +394,7 @@ def render_results_card(date_label, games, out_path, title='Final Scores',
     body = (f'<div class="card">{_head(title, date_label)}'
             f'{"".join(_game_block(g) for g in games)}'
             f'{"".join(_postponed_block(g) for g in postponed)}{FOOTER}</div>')
-    return _shoot(_document(RESULTS_CSS, body), out_path)
+    return _shoot(_document(RESULTS_CSS, body), out_path, label=title)
 
 
 # --------------------------------------------------------------------------
@@ -375,7 +432,7 @@ def render_schedule_card(date_label, games, out_path, title='Tonight’s Games',
         raise CardRenderError('no fixtures to render')
     body = (f'<div class="card">{_head(title, date_label, subtitle=subtitle)}'
             f'{"".join(_fixture_block(g) for g in games)}{FOOTER}</div>')
-    return _shoot(_document(SCHEDULE_CSS, body), out_path)
+    return _shoot(_document(SCHEDULE_CSS, body), out_path, label=title)
 
 
 # --------------------------------------------------------------------------
@@ -454,7 +511,7 @@ def render_starters_card(date_label, games, out_path,
         f'{_starter_col(g, "home", "h")}</div></div>' for g in games)
     body = (f'<div class="card">{_head(title, date_label, subtitle=subtitle)}'
             f'{blocks}{FOOTER}</div>')
-    return _shoot(_document(STARTERS_CSS, body), out_path)
+    return _shoot(_document(STARTERS_CSS, body), out_path, label=title)
 
 
 # --------------------------------------------------------------------------
@@ -589,7 +646,7 @@ def render_box_score_card(date_label, game, out_path, title='Final'):
         parts.append(_kv(label, _esc(value)))
     parts.append(FOOTER)
     return _shoot(_document(BOX_CSS, f'<div class="card">{"".join(parts)}</div>'),
-                  out_path)
+                  out_path, label='Box score')
 
 
 # --------------------------------------------------------------------------
@@ -663,7 +720,7 @@ def render_leaders_card(date_label, title, rows, out_path,
     card = (f'<div class="card">'
             f'{_head(title, date_label, subtitle=subtitle)}'
             f'<table class="ld">{body}</table>{FOOTER}</div>')
-    return _shoot(_document(LEADERS_CSS, card), out_path)
+    return _shoot(_document(LEADERS_CSS, card), out_path, label=title)
 
 
 def render_standings_card(date_label, rows, out_path, cut_after=5,
@@ -686,4 +743,4 @@ def render_standings_card(date_label, rows, out_path, cut_after=5,
                      '<div class="cutline">POSTSEASON LINE</div></td></tr>')
     card = (f'<div class="card">{_head(title, date_label)}'
             f'<table class="st">{body}</table>{FOOTER}</div>')
-    return _shoot(_document(STANDINGS_CSS, card), out_path)
+    return _shoot(_document(STANDINGS_CSS, card), out_path, label=title)
