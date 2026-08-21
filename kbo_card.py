@@ -596,11 +596,32 @@ def render_box_score_card(date_label, game, out_path, title='Final'):
 # Standings
 # --------------------------------------------------------------------------
 
+# ⚠️ This card is deliberately tighter than the others, and the tightening is
+# load-bearing rather than taste. Bluesky fits a lone image inside a square box
+# (515 px on the web, 290 on mobile), so a portrait card is scaled down by its
+# HEIGHT and loses width: at the old spacing the ten-club table rendered
+# 1240x1408 and the client drew it 454 px wide against every other card's 515.
+# See starters_chunks in kbo_card_data.py for the full measurement.
+#
+# The table cannot be split the way the starters card is — cutting a league
+# table at rank 5 severs the comparison that makes it a table, and that is
+# exactly where the postseason line already falls — so the height comes out of
+# the card instead. The row padding and the chrome below take it to 1240x1178,
+# ratio 1.053 with the cutline drawn and 1.098 without, so both daily variants
+# clear it. Being landscape is also what makes the type BIGGER on screen, not
+# smaller: a height-capped card is scaled by 515/height, so at the old spacing
+# the 16px table set 14% smaller than it does now.
+#
+# Anything that adds a row or loosens this spacing needs re-measuring: the
+# margin is 5%, and the club count is fixed at ten so nothing else absorbs it.
 STANDINGS_CSS = f"""
-table.st{{width:100%;border-collapse:collapse;margin-top:4px;font-size:16px}}
+.card{{padding:20px 30px 14px}}
+.hr{{margin-top:10px}}
+.foot{{margin-top:10px;padding-top:9px}}
+table.st{{width:100%;border-collapse:collapse;margin-top:0;font-size:16px}}
 table.st th{{color:{MUTED};font-size:11px;font-weight:400;letter-spacing:0.06em;
-  text-align:right;padding:10px 0 6px}}
-table.st td{{padding:11px 0;border-bottom:1px solid {RULE}}}
+  text-align:right;padding:6px 0 4px}}
+table.st td{{padding:7px 0;border-bottom:1px solid {RULE}}}
 table.st tr:last-child td{{border-bottom:0}}
 table.st td.rk{{color:{MUTED};font-size:12px;width:26px}}
 table.st td.tm{{font-weight:700}}
@@ -608,7 +629,7 @@ table.st td.wl{{text-align:right;font-weight:700;white-space:nowrap}}
 table.st td.gb{{text-align:right;color:{MUTED};width:64px}}
 tr.cut td{{border-bottom:0;padding:0}}
 .cutline{{display:flex;align-items:center;gap:10px;color:{RED};font-size:11px;
-  letter-spacing:0.1em;padding:7px 0}}
+  letter-spacing:0.1em;padding:5px 0}}
 .cutline::before,.cutline::after{{content:"";flex:1;
   border-bottom:1px dashed {RED}}}
 """
