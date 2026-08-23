@@ -1118,7 +1118,8 @@ def pick_standings_date(candidates, history, ignore_history):
     walk stops at its history entry rather than re-posting an unchanged table.
 
     Mirrors evaluate_results (same candidate walk, same midnight-boundary
-    behaviour) because the two gates must agree on when a night is 'done'."""
+    behaviour) because the two gates must agree on when a night is 'done', and
+    then waits for the results digest to have actually gone out (see below)."""
     for d in candidates:
         if f'standings:{d}' in history and not ignore_history:
             return None                     # newest unposted date is done; stop
@@ -1129,6 +1130,19 @@ def pick_standings_date(candidates, history, ignore_history):
             print(f'{d}: {len(live)} game(s) still unfinished — holding.')
             continue
         if noncancel:                       # games played and all now final
+            # ⚠ The night's scores lead and the table follows. Agreeing on
+            # when a night is 'done' is not enough to order the two posts,
+            # because results fires on two slots (23:30, 00:45) and standings
+            # polls seven times from 22:00: a slate settling at 22:00 put the
+            # table out 90 minutes ahead of the scores it reflects. Measured
+            # 23 August 2026 over the nine posted nights since 15 August —
+            # standings went first on five of them. Gate on the results entry
+            # rather than on the clock, because the settling time is exactly
+            # the thing nobody can predict; a later poll then carries it.
+            if f'results:{d}' not in history and not ignore_history:
+                print(f'{d}: settled, but the results digest has not posted '
+                      f'yet — holding the table until it has.')
+                return None
             return d
         print(f'{d}: no games — standings unchanged.')
     return None

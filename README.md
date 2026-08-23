@@ -10,7 +10,8 @@ Posts to [@kbo-english.bsky.social](https://bsky.app/profile/kbo-english.bsky.so
   the probable starting pitchers threaded underneath (morning).
 - results — a nightly final-scores digest, with a compact box score threaded per
   game (evening).
-- standings — a daily rank / W-L / games-back table.
+- standings — a daily rank / W-L / games-back table, held until the night's
+  results digest has gone out so the scores always lead the table.
 - leaders — a weekly season-leaders thread, top 5 in each core hitting and
   pitching stat (Mondays, a league off-day).
 
