@@ -43,6 +43,8 @@ gone out.
 - kbo_post.py <mode> — post one card; mode is schedule, results, standings or
   leaders.
 - kbo_roster_build.py — refresh kbo_roster.json, the pcode-to-English-name table.
+- test_kbo_post.py — guards the posting order, the midnight look-back and the
+  bounded attendance wait. Stdlib only; run with python3 -m unittest.
 - kbo_attendance_timing_check.py — a temporary verification harness (July 2026),
   to be removed once its question is answered.
 
