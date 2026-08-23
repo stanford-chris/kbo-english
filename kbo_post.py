@@ -82,6 +82,16 @@ KST = ZoneInfo('Asia/Seoul')
 LOCK_WAIT = {'live': 240, 'standings': 240, 'results': 240,
              'schedule': 900, 'leaders': 900}
 
+# How long a finished game waits for KBO to publish its crowd figure before the
+# box score goes out without one. The wait used to be unbounded, and the tail is
+# what made that untenable: of the 65 box scores posted up to 23 August 2026, 37
+# were held at least one poll, and while 30 of those cleared inside 45 minutes,
+# one waited 255 -- a 14:00 day game on 2 August whose box score landed at 21:45.
+# Bluesky posts cannot be edited, so this is a straight trade and 45 minutes is
+# where it was set: 58 of the 65 would have kept their figure, and none would
+# have waited longer than the cap.
+ATTENDANCE_GRACE = 45 * 60
+
 HANDLE = 'kbo-english.bsky.social'
 KEYCHAIN_SERVICE = 'kbobot-bluesky'
 HISTORY = Path(__file__).parent / 'kbo_history.json'
@@ -1148,6 +1158,31 @@ def pick_standings_date(candidates, history, ignore_history):
     return None
 
 
+def note_final_seen(history, gid, dry_run):
+    """Seconds this bot has been holding a finished game for its crowd figure.
+
+    Bounding the wait needs a start time, and nothing recorded one: the schedule
+    API carries no end time (checked 23 August 2026 -- a final game reports only
+    gameDateTime, statusCode and statusInfo), so the only honest clock is when
+    this bot first saw the game final. The consequence to know: a Mac asleep
+    through the finish starts its 45 minutes from waking, not from the last out.
+    The nightly roundup remains the backstop for that."""
+    key = f'final_seen:{gid}'
+    now = datetime.now(timezone.utc)
+    entry = history.get(key)
+    if entry:
+        try:
+            return (now - datetime.fromisoformat(entry['first_seen'])).total_seconds()
+        except (KeyError, TypeError, ValueError):
+            # A damaged stamp must not freeze the game at "0 seconds waited"
+            # forever, which is what returning 0 without rewriting would do.
+            print(f'  (unreadable hold stamp for {gid} — restarting its clock)')
+    history[key] = {'first_seen': now.isoformat()}
+    if not dry_run:
+        write_json_atomic(HISTORY, history, ensure_ascii=False, indent=2)
+    return 0.0
+
+
 def print_segments(mode, segments):
     """Dump each segment (text, length, over-limit flag, card size + alt) to
     stdout — the shared preview used by both threaded emit() and the live path."""
@@ -1315,31 +1350,52 @@ def main():
         return
 
     if mode == 'live':
-        date_str = (argv[argv.index('--date') + 1] if '--date' in argv
-                    else datetime.now(KST).strftime('%Y-%m-%d'))
-        games = fetch_games(date_str)
-        finals = [g for g in games
-                  if g.get('statusCode') == FINAL and not g.get('cancel')]
-        pending = [g for g in finals
-                   if f'live:{g["gameId"]}' not in history or ignore_history]
+        # ⚠ A night's games belong to the date they STARTED on, so a poll past
+        # midnight has to look back a day or it reads the new date's untouched
+        # slate. Every 00:00, 00:15 and 00:30 poll of the season did exactly
+        # that: no live box score has ever gone out later than 23:31, and a
+        # game finishing after the last useful poll was left to the roundup.
+        # The walk stops at a night whose roundup HAS posted, because that post
+        # carries the box scores live missed — without the bound, this run
+        # would post them a second time the next evening.
+        dates = ([argv[argv.index('--date') + 1]] if '--date' in argv
+                 else [d for d in results_candidates(argv)
+                       if f'results:{d}' not in history or ignore_history])
+        finals_seen = 0
+        pending = []
+        for d in dates:
+            finals = [g for g in fetch_games(d)
+                      if g.get('statusCode') == FINAL and not g.get('cancel')]
+            finals_seen += len(finals)
+            pending += [g for g in finals
+                        if f'live:{g["gameId"]}' not in history or ignore_history]
         if not pending:
-            print(f'{date_str}: {len(finals)} final, none new to post live.')
+            print(f'{"/".join(dates) or "no open night"}: {finals_seen} final, '
+                  f'none new to post live.')
             return
         # Attendance-gated: KBO publishes each crowd figure about when the game
         # goes final, but a game that just ended may not have its number up yet.
         # Such a game is held for a later poll; if it never publishes, the
         # nightly roundup still carries it (without the figure). One crowd-page
-        # fetch serves the whole poll.
-        attendance = fetch_attendance(date_str)
+        # fetch serves the whole poll -- one per night still open.
+        attendance_by_date = {d: fetch_attendance(d)
+                              for d in {g['gameDate'] for g in pending}}
         roster = load_roster()
         added = []
         posted = 0
         for g in by_start(pending):
             gid = g['gameId']
+            attendance = attendance_by_date.get(g['gameDate'], {})
             matchup = f'{g["awayTeamCode"]}@{g["homeTeamCode"]}'
             if not attendance.get(g['homeTeamCode']):
-                print(f'  {matchup}: final, attendance not yet published — holding.')
-                continue
+                waited = note_final_seen(history, gid, dry_run)
+                if waited < ATTENDANCE_GRACE:
+                    print(f'  {matchup}: final, attendance not yet published — '
+                          f'holding ({int(waited // 60)} of '
+                          f'{ATTENDANCE_GRACE // 60} min).')
+                    continue
+                print(f'  {matchup}: attendance still unpublished after '
+                      f'{ATTENDANCE_GRACE // 60} min — posting without it.')
             segs = box_score_segments([g], roster, added, attendance, tags=HASHTAGS)
             if not segs:                        # box score not fetchable yet
                 print(f'  {matchup}: box score not ready — holding.')
@@ -1351,6 +1407,7 @@ def main():
             history[f'live:{gid}'] = {
                 'posted_at': datetime.now(timezone.utc).isoformat(),
                 'matchup': matchup}
+            history.pop(f'final_seen:{gid}', None)      # the wait is over
             write_json_atomic(HISTORY, history, ensure_ascii=False, indent=2)
             posted += 1
         if added and not dry_run:
