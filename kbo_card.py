@@ -421,7 +421,7 @@ def _fixture_block(g):
     return f'<div class="g"><div class="row">{away}{mid}{home}</div></div>'
 
 
-def render_schedule_card(date_label, games, out_path, title='Tonight’s Games',
+def render_schedule_card(date_label, games, out_path, title='Today’s Games',
                          subtitle=''):
     """Tonight's fixtures. `games` is a list of dicts:
         {away_emoji/away_logo, away_name, home_..., time}

@@ -589,7 +589,7 @@ def starters_alt(date_label, rows, part=None, of=None):
 
 
 def schedule_alt(date_label, rows, subtitle):
-    parts = [f'Tonight’s games, {date_label}.']
+    parts = [f'Today’s games, {date_label}.']
     if subtitle:
         # 'All games start at 6:30 p.m.' already ends in a stop.
         parts.append(subtitle if subtitle.endswith('.') else subtitle + '.')

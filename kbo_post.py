@@ -759,7 +759,7 @@ def compose_schedule(date_str, items, roster):
     # the per-line times; otherwise show the time on each line.
     times = {format_time(g['gameDateTime']) for g in games}
     uniform = len(times) == 1 and len(games) > 1
-    head = f'🇰🇷⚾ Tonight’s games · {format_date(date_str)}'
+    head = f'🇰🇷⚾ Today’s games · {format_date(date_str)}'
     if uniform:
         head += f' (all games start at {next(iter(times))})'
     lines = '\n'.join(schedule_line(g, show_time=not uniform) for g in games)
