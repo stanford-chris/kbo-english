@@ -630,14 +630,18 @@ def leader_block(label, rows):
 
 def compose_results(date_str, finals, cancelled=()):
     """Final-scores digest, with a Postponed section listing any cancelled games
-    rather than dropping them."""
-    parts = [f'🇰🇷⚾ Final scores · {format_date(date_str)}']
+    rather than dropping them. A day with no finals at all gets a 'Postponed'
+    header instead of 'Final scores' — matching attach_results_card's card
+    title — and the fixture list needs no separate 'Postponed:' label of its
+    own, since the header already says so."""
+    header = 'Final scores' if finals else 'Postponed'
+    parts = [f'🇰🇷⚾ {header} · {format_date(date_str)}']
     if finals:
         parts.append('\n'.join(result_line(g) for g in by_start(finals)))
     if cancelled:
         pp = '\n'.join(f'{team_label(g["awayTeamCode"])} @ {team_label(g["homeTeamCode"])}'
                        for g in by_start(cancelled))
-        parts.append(f'Postponed:\n{pp}')
+        parts.append(pp if not finals else f'Postponed:\n{pp}')
     return [('\n\n'.join(parts) + '\n\n', HASHTAGS)]
 
 

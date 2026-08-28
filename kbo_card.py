@@ -381,16 +381,24 @@ def _postponed_block(g):
     return f'<div class="g"><div class="row ppd">{away}{mid}{home}</div></div>'
 
 
-def render_results_card(date_label, games, out_path, title='Final Scores',
+def render_results_card(date_label, games, out_path, title=None,
                         postponed=()):
     """The daily digest. `games` is a list of dicts:
         {away_emoji, away_name, away_score, home_emoji, home_name, home_score,
          note}  — note is a short tag ('rout', 'shutout') or '' for none.
     `postponed` lists rained-out games in the same shape minus the scores; they
     render after the finals, so an all-rainout day still makes a card.
+
+    `title` defaults to 'Final Scores', or to 'Postponed' when `games` is
+    empty: a slate that produced no finals at all has nothing to call a
+    final score, and heading an all-rainout card 'Final Scores' above a page
+    of rows that each just say 'postponed' reads as a mistake rather than a
+    rainout.
     Returns (path, (w, h))."""
     if not games and not postponed:
         raise CardRenderError('no games to render')
+    if title is None:
+        title = 'Final Scores' if games else 'Postponed'
     body = (f'<div class="card">{_head(title, date_label)}'
             f'{"".join(_game_block(g) for g in games)}'
             f'{"".join(_postponed_block(g) for g in postponed)}{FOOTER}</div>')

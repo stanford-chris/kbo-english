@@ -492,6 +492,13 @@ def standings_input(rows):
 # --------------------------------------------------------------------------
 
 def results_alt(date_label, rows, postponed=()):
+    if not rows and postponed:
+        # No finals at all: matches render_results_card's 'Postponed' title
+        # rather than opening with a claim of final scores it doesn't have.
+        listed = '; '.join(f'{p["away_name"]} at {p["home_name"]}'
+                           for p in postponed)
+        return (f'{plural(len(postponed), "game").capitalize()} postponed '
+                f'for {date_label}: {listed}.')
     parts = [f'Final scores for {date_label}.']
     for r in rows:
         w = r.get('winner')
