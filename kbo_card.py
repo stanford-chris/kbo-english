@@ -332,7 +332,7 @@ RESULTS_CSS = f"""
 .nm{{font-size:17px;font-weight:700}}
 .s{{font-size:17px;white-space:nowrap;letter-spacing:0.04em}}
 .s b{{color:{RED};font-weight:700}}
-.s .dot{{color:#000}}
+.s .dot{{color:{RED}}}
 .pit{{font-size:12px;color:{MUTED};margin-top:5px;line-height:1.5}}
 .pit b{{color:{INK};font-weight:700}}
 .row.ppd .s{{font-size:13px;color:{MUTED}}}
