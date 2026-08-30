@@ -42,11 +42,26 @@ gone out.
 
 - kbo_post.py <mode> — post one card; mode is schedule, results, standings or
   leaders.
+- kbo_card.py — renders each post type as a monospace "ink on cream" PNG card.
+  Headless Chrome does the type/image layout, Pillow crops the result to
+  content. Not run standalone — imported by kbo_post.py and kbo_card_data.py.
+  Needs a local Chrome/Chromium: `find_chrome()` checks the `KBO_CHROME` env
+  var, then `google-chrome`/`chromium`/etc on PATH, then the standard macOS
+  app paths, in that order.
+- kbo_card_data.py — the adapter layer between live Naver/KBO data and
+  kbo_card's plain-dict inputs, and the source of each card's alt text. Run
+  directly to preview a real day's cards without posting:
+  `python3 kbo_card_data.py 2026-07-18 [TEAM]`.
+- kbo_lock.py — an exclusive per-run flock so overlapping scheduled runs
+  (live/standings/results/leaders/roster-build) can't race on
+  kbo_history.json. A run that can't take the lock inside its budget exits
+  without posting rather than queueing.
+- net_guard.py — gates a run on the machine actually having a working
+  network path before it starts, so a Wi-Fi-associated-but-routeless machine
+  fails fast with one log line rather than a traceback partway through.
 - kbo_roster_build.py — refresh kbo_roster.json, the pcode-to-English-name table.
 - test_kbo_post.py — guards the posting order, the midnight look-back and the
   bounded attendance wait. Stdlib only; run with python3 -m unittest.
-- kbo_attendance_timing_check.py — a temporary verification harness (July 2026),
-  to be removed once its question is answered.
 
 ## Setup
 
@@ -54,6 +69,9 @@ gone out.
 
     # Bluesky app password in the macOS Keychain:
     security add-generic-password -a "kbo-english.bsky.social" -s "kbobot-bluesky" -w
+
+Card rendering (kbo_card.py) also needs a local Chrome or Chromium install —
+see "Scripts" below for how it's located.
 
 ## Usage
 
