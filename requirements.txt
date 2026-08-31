@@ -1,5 +1,8 @@
 # posting to Bluesky
 atproto>=0.0.55
 
+# kbo_card.py crops the rendered card
+Pillow>=10.0
+
 # Game and stat data come from public, unauthenticated JSON endpoints
 # (Naver Sports) and the KBO English site, via the standard library.
