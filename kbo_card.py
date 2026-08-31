@@ -287,8 +287,7 @@ html,body{{margin:0;background:#{SENTINEL}}}
 img.lg{{vertical-align:middle;object-fit:contain}}
 """
 
-FOOTER = ('<div class="foot">KBO IN ENGLISH &middot; '
-          '@kbo-english.bsky.social</div>')
+FOOTER = '<div class="foot">@kbo-english.bsky.social</div>'
 
 
 def _document(css, body):
