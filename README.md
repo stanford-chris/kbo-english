@@ -38,6 +38,16 @@ extra innings. A poll past midnight looks back a day, since a night's games
 belong to the date they started on, and stops once that night's roundup has
 gone out.
 
+schedule and leaders each fire once a day (11:00 daily, 11:30 Mondays), with no
+poll to catch a held post the way the three above do. Since 2 September 2026 a
+failed card render holds the whole post rather than degrading it to plain text
+(see the note above build_card() in kbo_post.py), so each of those two now
+carries a second fire 30 minutes later — 11:30 and Monday 12:00 — that is a
+no-op if the first one already posted (kbo_history.json's (mode, date) key is
+already set) and only does anything if it was held. One retry, not a poll: a
+card render that fails twice in half an hour is treated as the same run, not
+chased further.
+
 ## Scripts
 
 - kbo_post.py <mode> — post one card; mode is schedule, results, standings or
