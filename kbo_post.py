@@ -23,8 +23,9 @@ Five post types:
 Every post is a rendered PNG card, built by kbo_card via kbo_card_data. The post
 text is the headline alone — the card carries the detail and its alt text
 repeats that detail in full, so the information is never set twice in one post.
-If a card fails to render the post falls back to the complete text body it used
-before cards existed, which is why the compose_* functions still build one.
+If a card fails to render the post is held rather than shipped as plain text —
+see card_only(). The compose_* functions still build a full text body per
+segment regardless, because it feeds the card's own alt text.
 
 schedule/results/leaders draw their game and stat data from Naver Sports' public
 API; standings and the leaders' name romanisation read the KBO English site.
@@ -616,18 +617,6 @@ def leader_rows(key, rankings, roster, added):
     return rows
 
 
-def leader_block(label, rows):
-    """One leaderboard as a text block: a label then the ranked lines, each
-    'rank. TEAM Player · value' with the team as its short name (e.g. Lotte).
-    Names carry the team plainly rather than by emoji, so a reader who doesn't
-    know the club emojis can still tell who's who."""
-    lines = [label]
-    for rank, name, team, val in rows:
-        abbr = SHORT_NAMES.get(team, team)
-        lines.append(f'{rank}. {abbr} {name} · {val}'.strip())
-    return '\n'.join(lines)
-
-
 def compose_results(date_str, finals, cancelled=()):
     """Final-scores digest, with a Postponed section listing any cancelled games
     rather than dropping them. A day with no finals at all gets a 'Postponed'
@@ -846,8 +835,15 @@ def build_tb(body, tags):
 # --------------------------------------------------------------------------
 # Cards. Each post can carry a rendered PNG of the same information. Rendering
 # needs Chrome and Pillow, so it is always attempted inside build_card(): if
-# anything fails the post still goes out as plain text, which is what it was
-# before cards existed. A missed image is not worth a missed post.
+# anything fails the post is held rather than shipped as plain text.
+#
+# ⚠ That is a reversal of the original policy ("a missed image is not worth a
+# missed post"), changed 2 September 2026 after a Chrome hang (60s, then a
+# 120s retry, both timed out) on one box score put a bare text score line on
+# the feed with no image at all — every other post around it, before and
+# after, carried its card fine, so the failure was transient rather than
+# systemic. Deleted and reposted with a card once Chrome recovered. His
+# instruction: skip posting rather than post without a card.
 # --------------------------------------------------------------------------
 
 def build_card(render, alt):
@@ -879,20 +875,25 @@ def card_only(segment, card):
     full, so the only text the post needs is its hashtags. Everything else lives
     on the card.
 
-    A segment whose card failed to render keeps its complete text, which is what
-    the bot posted before cards existed. That fallback is the whole reason the
-    compose_* functions still build full bodies."""
-    body, tags, _ = seg_parts(segment)
+    Returns None if the card failed to render. Cards are required, not a
+    decoration — a segment with no card is held rather than posted as plain
+    text (see the note above build_card)."""
+    _, tags, _ = seg_parts(segment)
     if not card:
-        return (body, tags, None)
+        return None
     return ('', tags, card)
 
 
 def with_card(segments, index, card):
     """Return `segments` with `card` attached to the segment at `index`, that
-    segment stripped down to its hashtags."""
+    segment stripped down to its hashtags — or None if the card failed to
+    render, meaning the whole thread this segment anchors is held rather than
+    posted without it."""
+    carded = card_only(segments[index], card)
+    if carded is None:
+        return None
     out = list(segments)
-    out[index] = card_only(out[index], card)
+    out[index] = carded
     return out
 
 
@@ -921,7 +922,12 @@ def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids
     these are threaded replies under the already-tagged digest, and HASHTAGS for
     a standalone live post, which is its own thread root. `skip_ids` drops games
     already posted live, so the nightly roundup only threads box scores for games
-    the live run didn't cover — its digest card still lists every final."""
+    the live run didn't cover — its digest card still lists every final.
+
+    A game whose card fails to render is dropped from the returned list, not
+    downgraded to a text-only segment — the live caller holds it for the next
+    poll, and the roundup still lists it on the digest card even if its own
+    box-score reply never comes."""
     import kbo_card
     import kbo_card_data as data
     attendance = attendance or {}
@@ -945,7 +951,9 @@ def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids
             lambda path, game=game, label=label:
                 kbo_card.render_box_score_card(label, game, path),
             data.box_alt(label, game))
-        segments.append(card_only((body, list(tags)), card))
+        carded = card_only((body, list(tags)), card)
+        if carded is not None:
+            segments.append(carded)
     return segments
 
 
@@ -956,8 +964,12 @@ def attach_schedule_cards(date_str, playable, roster, segments):
     The fixtures card leaves the pitchers off, because the replies below it are
     given over to them. `segments` is what compose_schedule built — a matchups
     post followed by one or more starters replies — and the whole tail is
-    replaced by one carded reply per group of at most three fixtures. If any
-    starters card fails to render, every reply keeps the text it already had."""
+    replaced by one carded reply per group of at most three fixtures.
+
+    Returns None (hold the whole thread) if the fixtures card itself fails to
+    render. If any starters card fails, the starters replies are dropped and
+    only the fixtures post goes out — matching card_only's rule everywhere
+    else, rather than falling back to their old plain-text form."""
     import kbo_card
     import kbo_card_data as data
     label = data.card_date(date_str)
@@ -968,6 +980,8 @@ def attach_schedule_cards(date_str, playable, roster, segments):
                                                    subtitle=subtitle),
         data.schedule_alt(label, rows, subtitle))
     out = with_card(segments, 0, fixtures)
+    if out is None:
+        return None
     if len(out) == 1:                       # no starter announced for any game
         return out
 
@@ -990,9 +1004,12 @@ def attach_schedule_cards(date_str, playable, roster, segments):
             data.starters_alt(label, chunk, part=i, of=total)))
     # All or nothing. The text replies below were chunked by character count,
     # which splits at a different place, so carding some groups and leaving the
-    # rest as text would repeat some fixtures and drop others.
+    # rest as text would repeat some fixtures and drop others — and posting any
+    # of them without a card is exactly what this file no longer does, so a
+    # partial render drops the starters replies rather than falling back to
+    # their old plain-text form. The fixtures post above still goes out.
     if not all(cards):
-        return out
+        return out[:1]
     # One card per group replaces however many replies the text needed. Each
     # card carries its whole post, and only the fixtures post is tagged.
     return out[:1] + [('', [], card) for card in cards]
@@ -1015,12 +1032,13 @@ def attach_standings_card(date_str, rows, segments):
 def leaders_segments(date_str, raw, roster, added):
     """One post per leaderboard, each carrying that board's card.
 
-    Each board appears once. Where a card renders, the post is the card alone —
-    its title and date are on the card, the standings are in the alt text — so
-    the body is empty; where rendering failed, the post falls back to the old
-    text block so the numbers still go out. The first board carries the hashtags
-    (there is no separate intro post: the date and 'season leaders' framing are
-    on every card). Returns [] if no board has data."""
+    Each board appears once, the post is the card alone — its title and date
+    are on the card, the standings are in the alt text — so the body is empty.
+    A board whose card fails to render is dropped rather than posted as its
+    old text block; the surviving boards still thread together, and whichever
+    ends up first carries the hashtags (there is no separate intro post: the
+    date and 'season leaders' framing are on every card). Returns [] if no
+    board has data or every card failed."""
     import kbo_card
     import kbo_card_data as data
     label = data.card_date(date_str)
@@ -1037,8 +1055,6 @@ def leaders_segments(date_str, raw, roster, added):
             data.leaders_alt(label, title, rows))
         if card:
             boards.append(('', tags, card))
-        else:
-            boards.append((leader_block(title, top) + '\n\n', tags, None))
     return boards
 
 
@@ -1207,7 +1223,19 @@ def print_segments(mode, segments):
 
 def emit(mode, date_str, segments, dry_run, history, count):
     """Print each segment, and (unless dry-run) post the thread and record it.
-    Returns True if it actually posted."""
+    Returns True if it actually posted.
+
+    `segments` is None when the post's anchor card failed to render (see
+    with_card): nothing is posted and history is left untouched, so a mode
+    that polls (standings, results, live) picks the date back up on its next
+    slot. schedule and leaders run once a day with no such retry — a Chrome
+    hang there costs the whole day's post, which is the trade this file's
+    2 September 2026 policy accepts in exchange for never shipping a card-less
+    post."""
+    if segments is None:
+        print(f'\n{mode}: card failed to render — holding rather than '
+              f'posting without one.')
+        return False
     print_segments(mode, segments)
     if dry_run:
         print('\n(dry run — nothing posted, history untouched)')
@@ -1401,7 +1429,7 @@ def main():
                 print(f'  {matchup}: attendance still unpublished after '
                       f'{ATTENDANCE_GRACE // 60} min — posting without it.')
             segs = box_score_segments([g], roster, added, attendance, tags=HASHTAGS)
-            if not segs:                        # box score not fetchable yet
+            if not segs:      # box score not fetchable yet, or its card didn't render
                 print(f'  {matchup}: box score not ready — holding.')
                 continue
             print_segments('live', segs)

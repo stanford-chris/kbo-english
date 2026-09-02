@@ -5,8 +5,9 @@ Prompted by a real card on 28 August 2026: every game on the day rained out,
 and the results card still headed itself 'Final Scores' above five rows that
 each just said 'postponed' -- a header that claims exactly what the card goes
 on to say didn't happen. The same mismatch was in the card's own alt text and
-in compose_results, the plaintext fallback a card-render failure falls back
-to.
+in compose_results, whose plaintext body still feeds that alt text (and, until
+2 September 2026, was also what a card-render failure posted as-is -- see the
+note above build_card in kbo_post.py for why that fallback was retired).
 
 Three surfaces, one rule: a slate with zero finals gets a 'Postponed' header,
 never 'Final scores' with nothing under it. A MIXED day (some finals, some
@@ -126,9 +127,9 @@ class ResultsAltAllPostponed(unittest.TestCase):
 
 
 class ComposeResultsAllPostponed(unittest.TestCase):
-    """The plaintext fallback compose_results falls back to when a card
-    fails to render -- it must not claim final scores it doesn't have
-    either."""
+    """The plaintext body compose_results builds (it feeds the card's alt
+    text, and until 2 September 2026 was also posted as-is on a failed
+    render) must not claim final scores it doesn't have either."""
 
     def _game(self, away, home):
         return {'gameId': '20260828SSLG0', 'gameDate': '2026-08-28',
