@@ -18,7 +18,7 @@ Five post types:
              each evening once the night's slate is final (polled, and gated so
              it holds until every game is in and skips off-days).
   leaders    A weekly season-leaders thread: one post per leaderboard (top 5),
-             romanised via the KBO English player pages.
+             romanized via the KBO English player pages.
 
 Every post is a rendered PNG card, built by kbo_card via kbo_card_data. The post
 text is the headline alone — the card carries the detail and its alt text
@@ -28,7 +28,7 @@ see card_only(). The compose_* functions still build a full text body per
 segment regardless, because it feeds the card's own alt text.
 
 schedule/results/leaders draw their game and stat data from Naver Sports' public
-API; standings and the leaders' name romanisation read the KBO English site.
+API; standings and the leaders' name romanization read the KBO English site.
 schedule runs in the morning, results and standings in the evening once the
 slate is final, leaders weekly on Monday (a league off-day). Dedup is by
 (mode, date) in kbo_history.json, so each card posts at most once per day.
@@ -42,7 +42,7 @@ Data sources (unauthenticated JSON, KST timestamps):
 Team names come from the stable 2-letter TeamCode (see TEAMS), never from the
 API's TeamName field, which flip-flops between Korean and English. Starting
 pitchers are posted in Korean unless the pcode is in kbo_roster.json; leaderboard
-names are romanised from the KBO English player pages and cached into that same
+names are romanized from the KBO English player pages and cached into that same
 table, falling back to Korean on a miss.
 
 Requires (only for a real post, not --dry-run):
@@ -116,7 +116,7 @@ TOP_PLAYERS_API = ('https://api-gw.sports.naver.com/statistics/categories/kbo/'
                    '?playerType={pt}&rankFlag=Y&limit={limit}&includeFields={fields}')
 
 # KBO English player pages, by pcode (== Naver pcode). Used only by the leaders
-# post to romanise leaderboard names it hasn't cached yet — hitters and pitchers
+# post to romanize leaderboard names it hasn't cached yet — hitters and pitchers
 # live on different pages, so the lookup is keyed by which one the player is.
 KBO_PLAYER_PAGE = {
     True:  'https://eng.koreabaseball.com/Teams/PlayerInfoPitcher/Summary.aspx?pcode={pc}',
@@ -189,7 +189,7 @@ CROWD_LABEL_TO_CODE = {
     'KIA': 'HT', 'SSG': 'SK', 'LG': 'LG', 'KT': 'KT', 'NC': 'NC',
     '두산': 'OB', '롯데': 'LT', '삼성': 'SS', '키움': 'WO', '한화': 'HH',
 }
-# Crowd-page stadium labels -> the romanised park names KBO fans use. Taken from
+# Crowd-page stadium labels -> the romanized park names KBO fans use. Taken from
 # the page's own stadium column, not derived from the home club, because Samsung
 # hosts at two parks (Daegu and its Pohang sub-venue) and Jamsil is shared.
 CROWD_STADIUM_EN = {
@@ -357,7 +357,7 @@ def fetch_box_score(game_id):
 
 def fetch_attendance(date_str):
     """{home_team_code: ('23,000', 'Munhak')} for a KST date — the attendance
-    figure and romanised venue, scraped from KBO's official daily crowd page —
+    figure and romanized venue, scraped from KBO's official daily crowd page —
     or {} on any failure (attendance is a nice-to-have and must never cost a
     post). Keyed by home team (one home game per club per day), so the caller
     looks it up by g['homeTeamCode']. Venue comes from the page's stadium
@@ -444,7 +444,7 @@ def order_name(raw, foreign, pcode):
 
 
 def display_name(starter, roster):
-    """Romanised name from the roster table, or the Korean name if the pcode
+    """Romanized name from the roster table, or the Korean name if the pcode
     isn't in the table yet (so the post never depends on a live KBO lookup)."""
     pcode = str(starter.get('pcode') or '')
     entry = roster.get(pcode)
@@ -572,7 +572,7 @@ def named(entry):
 
 
 def resolve_name(pcode, name_ko, is_pitcher, roster, added):
-    """Romanised display name for a leaderboard player, fetching + caching into
+    """Romanized display name for a leaderboard player, fetching + caching into
     the roster on a miss (appending (pcode, entry) to `added`), or the Korean
     name if the KBO lookup fails.
 
@@ -647,7 +647,7 @@ def hits_errors_line(record):
 
 def decision_line(record, roster, added):
     """'W: Naile (6-5) · L: Hatch (1-4) · S: Lee Young-ha (14)' — the winning,
-    losing and (if any) saving pitcher, romanised, with season W-L or save
+    losing and (if any) saving pitcher, romanized, with season W-L or save
     count. Holds are omitted. '' if no decision parses."""
     by_result = {p.get('wls'): p for p in record.get('pitchingResult', [])}
     parts = []
@@ -663,7 +663,7 @@ def decision_line(record, roster, added):
 
 def hr_labels(game, record, roster, added):
     """Every batter with a home run, as '🐯 Kim Do-yeong' labels (team emoji +
-    romanised name; a multi-homer game shows the count), away side first."""
+    romanized name; a multi-homer game shows the count), away side first."""
     labels = []
     for side, code in (('away', game['awayTeamCode']),
                        ('home', game['homeTeamCode'])):
@@ -863,7 +863,7 @@ def build_card(render, alt):
 
 
 def seg_parts(segment):
-    """Segments are (body, tags) or (body, tags, card). Normalise to three."""
+    """Segments are (body, tags) or (body, tags, card). Normalize to three."""
     body, tags = segment[0], segment[1]
     card = segment[2] if len(segment) > 2 else None
     return body, tags, card
@@ -1148,7 +1148,7 @@ def pick_standings_date(candidates, history, ignore_history):
     walk stops at its history entry rather than re-posting an unchanged table.
 
     Mirrors evaluate_results (same candidate walk, same midnight-boundary
-    behaviour) because the two gates must agree on when a night is 'done', and
+    behavior) because the two gates must agree on when a night is 'done', and
     then waits for the results digest to have actually gone out (see below)."""
     for d in candidates:
         if f'standings:{d}' in history and not ignore_history:
@@ -1513,7 +1513,7 @@ def record_run(mode):
 if __name__ == '__main__':
     _err = validate_argv(sys.argv[1:])
     if _err:
-        sys.exit(f'{_err}\nRecognised: {" ".join(sorted(MODES))} | '
+        sys.exit(f'{_err}\nRecognized: {" ".join(sorted(MODES))} | '
                  f'{" ".join(sorted(FLAGS))} | --date YYYY-MM-DD. '
                  f'Refusing to run (a bare run posts live).')
     main()

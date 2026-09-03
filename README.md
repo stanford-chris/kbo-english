@@ -18,7 +18,7 @@ Posts to [@kbo-english.bsky.social](https://bsky.app/profile/kbo-english.bsky.so
   pitching stat (Mondays, a league off-day).
 
 Data comes from Naver Sports' public JSON API and the KBO English site. Team
-names use a stable 2-letter code; pitcher and leader names are romanised from the
+names use a stable 2-letter code; pitcher and leader names are romanized from the
 KBO English pages and cached in kbo_roster.json. Dedup is by (mode, date) in
 kbo_history.json, so each card posts at most once per day.
 

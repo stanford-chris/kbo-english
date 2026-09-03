@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build/refresh kbo_roster.json — a local pcode -> {name, foreign} table of
-official English pitcher names, so kbo_post.py can romanise probable starters
+official English pitcher names, so kbo_post.py can romanize probable starters
 without touching the KBO English site at post time.
 
 How it works: it reads the probable-starter pcodes from Naver's game previews
@@ -98,7 +98,7 @@ def fetch_player(pcode):
 
 def main():
     # The 22:00 build shares its slot with the first standings poll, and
-    # kbo_post writes this same roster file when it romanises a new name, so
+    # kbo_post writes this same roster file when it romanizes a new name, so
     # both have to queue rather than interleave. Four builds a day means a
     # skipped one costs nothing.
     if not kbo_lock.hold('roster', 600):

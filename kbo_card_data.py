@@ -3,7 +3,7 @@
 Turns live Naver/KBO data into kbo_card inputs, and into the alt text that
 describes each card.
 
-This is the adapter layer: kbo_post owns the API and the romanisation, kbo_card
+This is the adapter layer: kbo_post owns the API and the romanization, kbo_card
 owns pixels, and this maps one to the other. Both the bot and the preview CLI
 import it, so it must stay free of anything that posts.
 
@@ -227,7 +227,7 @@ def game_name_index(record):
     """Korean name -> (pcode, is_pitcher) for everyone who appeared.
 
     etcRecords names players in Korean and carries no player codes, so it
-    cannot be romanised on its own. The box score in the same payload carries
+    cannot be romanized on its own. The box score in the same payload carries
     both, which is what makes this work. ⚠️ The key differs by role — batters
     use 'playerCode', pitchers use 'pcode' — and reading only the first leaves
     every 'off X' in Hangul."""

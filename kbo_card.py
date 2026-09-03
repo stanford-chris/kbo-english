@@ -18,7 +18,7 @@ and a 5-game day both come out tight. Corners are square on purpose: Bluesky
 rounds image corners itself.
 
 All five take plain dicts, not Naver API payloads — kbo_post owns the API and
-the romanisation, this module owns pixels only. See __main__ for the shapes.
+the romanization, this module owns pixels only. See __main__ for the shapes.
 
 Raises CardRenderError on any failure so the poster can fall back to plaintext.
 """
@@ -281,7 +281,7 @@ html,body{{margin:0;background:#{SENTINEL}}}
 .hr{{border-bottom:2px solid {INK};margin:14px 0 0}}
 .foot{{margin-top:14px;padding-top:12px;border-top:1px solid {RULE};
   font-size:11px;color:{MUTED};letter-spacing:0.06em}}
-/* Club logos centre on the text's middle rather than sitting on its baseline:
+/* Club logos center on the text's middle rather than sitting on its baseline:
    they are much taller than the type, so a baseline leaves them riding high.
    Unlike a fixed em offset, this holds as the MARK_* sizes change. */
 img.lg{{vertical-align:middle;object-fit:contain}}
@@ -537,7 +537,7 @@ MONO_ADVANCE = 0.6
 
 
 BOX_CSS = f"""
-/* Centre the mark against the club name rather than sitting it on the text
+/* Center the mark against the club name rather than sitting it on the text
    baseline: the logos are far taller than the type, so a baseline puts them
    visibly high. Flex centring holds at any MARK_HEADLINE size. */
 .tm{{display:flex;align-items:center;justify-content:space-between;

@@ -148,7 +148,7 @@ class ComposeResultsAllPostponed(unittest.TestCase):
 
     def test_mixed_slate_header_unchanged(self):
         """Regression: with at least one final, the header still says 'Final
-        scores' and the postponed fixtures keep their own labelled section."""
+        scores' and the postponed fixtures keep their own labeled section."""
         final = {'gameId': '20260828HTLG0', 'gameDate': '2026-08-28',
                  'gameDateTime': '2026-08-28T18:00:00',
                  'statusCode': k.FINAL, 'cancel': False,
