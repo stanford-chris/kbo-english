@@ -1516,6 +1516,12 @@ if __name__ == '__main__':
         sys.exit(f'{_err}\nRecognized: {" ".join(sorted(MODES))} | '
                  f'{" ".join(sorted(FLAGS))} | --date YYYY-MM-DD. '
                  f'Refusing to run (a bare run posts live).')
+    # Gated on __name__, not installed at module level — this file is
+    # imported by test suites, and mutating subprocess.run at import time
+    # would leak into every other test sharing the process. See
+    # api_call_log.py's own docstring.
+    import api_call_log
+    api_call_log.install('kbo_post.py')
     main()
     # Only real runs count as a heartbeat; a manual --dry-run should not make a
     # stalled bot look alive.
