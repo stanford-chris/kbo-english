@@ -70,8 +70,16 @@ chased further.
   network path before it starts, so a Wi-Fi-associated-but-routeless machine
   fails fast with one log line rather than a traceback partway through.
 - kbo_roster_build.py — refresh kbo_roster.json, the pcode-to-English-name table.
+- api_call_log.py — copied byte-identical from `~/Scripts` (same pattern as
+  net_guard.py). Installed in kbo_post.py's `__main__` block, it wraps
+  `subprocess.run` (curl), `requests.Session.request` and `httpx.Client.request`
+  (atproto's own HTTP client) so every outbound call this bot makes — Naver/KBO
+  fetches and its own Bluesky posts alike — is logged with its target host to
+  the shared `~/Scripts/api_calls.jsonl`.
 - test_kbo_post.py — guards the posting order, the midnight look-back and the
   bounded attendance wait. Stdlib only; run with python3 -m unittest.
+- test_api_call_log.py — covers api_call_log.py's three install paths and its
+  fail-open logging. Stdlib only.
 
 ## Setup
 
@@ -94,6 +102,9 @@ see "Scripts" below for how it's located.
 - kbo_history.json, kbo_results_history.json and kbo_roster.json are gitignored
   (rebuildable state/cache). The Bluesky credential lives in the macOS Keychain.
 - No API keys: every data source is public and unauthenticated.
+- api_call_log.py assumes a `~/Scripts` directory exists on the host machine
+  (it writes to `~/Scripts/api_calls.jsonl`) — a dependency shared with the
+  sibling bot repos it was copied from, not specific to this one.
 
 ## License
 
