@@ -83,10 +83,12 @@ def show_cutline(on):
 
 
 def card_date(date_str):
-    """'2026-07-18' -> '18 July'. Cards spell the month out; kbo_post's own
-    format_date stays abbreviated because the text posts are character-capped."""
-    return f'{date.fromisoformat(date_str).day} ' \
-           f'{date.fromisoformat(date_str):%B}'
+    """'2026-07-18' -> 'July 18'. Cards spell the month out; kbo_post's own
+    format_date stays abbreviated because the text posts are character-capped.
+    U.S. month-day order on this account alone (his call, 12 September 2026),
+    over the house day-first rule; format_date matches."""
+    d = date.fromisoformat(date_str)
+    return f'{d:%B} {d.day}'
 
 
 def innings_pitched(raw):

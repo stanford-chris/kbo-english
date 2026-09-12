@@ -225,5 +225,20 @@ class TestAttendanceWaitIsBounded(Patched):
         self.assertNotIn('final_seen:A', self.written[-1])
 
 
+class TestDatesAreUSOrder(unittest.TestCase):
+    """This account writes dates month first (his call, 12 September 2026),
+    over the house day-first rule. Both formatters must agree: the text
+    posts abbreviate, the cards spell the month out."""
+
+    def test_post_text_is_month_day_abbreviated(self):
+        self.assertEqual(k.format_date('2026-09-12'), 'Sep 12')
+        self.assertEqual(k.format_date('2026-07-01'), 'Jul 1')
+
+    def test_card_label_is_month_day_spelled_out(self):
+        import kbo_card_data
+        self.assertEqual(kbo_card_data.card_date('2026-09-12'), 'September 12')
+        self.assertEqual(kbo_card_data.card_date('2026-07-01'), 'July 1')
+
+
 if __name__ == '__main__':
     unittest.main()

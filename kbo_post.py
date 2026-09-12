@@ -378,9 +378,12 @@ def fetch_attendance(date_str):
 
 
 def format_date(date_str):
-    """'2026-07-16' -> '16 Jul' (UK day-month)."""
+    """'2026-07-16' -> 'Jul 16'. U.S. month-day order on this account alone
+    (his call, 12 September 2026), over the house day-first rule: the audience
+    is American and the league's English coverage writes dates that way. The
+    cards' own card_date in kbo_card_data follows the same order."""
     d = datetime.strptime(date_str, '%Y-%m-%d')
-    return f'{d.day} {d:%b}'
+    return f'{d:%b} {d.day}'
 
 
 def format_time(dt_iso):
