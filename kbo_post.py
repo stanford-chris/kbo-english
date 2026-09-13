@@ -433,6 +433,21 @@ def load_roster():
     return {}
 
 
+def save_roster_additions(roster, added, dry_run):
+    """Write `roster` back to disk if `added` holds any new entries (skipped on
+    a dry run), then print a '+ roster ...' line per addition, flagging a
+    foreign import that may need KEEP_SURNAME_FIRST."""
+    if not added:
+        return
+    if not dry_run:
+        write_json_atomic(ROSTER, roster, ensure_ascii=False,
+                          indent=2, sort_keys=True)
+    for pc, entry in added:
+        warn = ('  ⚠ NEW IMPORT — if East-Asian, add to KEEP_SURNAME_FIRST'
+                if entry.get('foreign') else '')
+        print(f'  + roster {pc}: {entry["name"]}{warn}')
+
+
 def order_name(raw, foreign, pcode):
     """KBO's ALL-CAPS surname-first form -> display form. Surname is title-cased
     ('KIM' -> 'Kim'); Western imports get the surname moved to the end
@@ -1267,14 +1282,7 @@ def main():
         roster = load_roster()
         added = []
         segments = leaders_segments(date_str, data, roster, added)
-        if added:
-            if not dry_run:
-                write_json_atomic(ROSTER, roster, ensure_ascii=False,
-                                  indent=2, sort_keys=True)
-            for pc, entry in added:
-                warn = ('  ⚠ NEW IMPORT — if East-Asian, add to KEEP_SURNAME_FIRST'
-                        if entry.get('foreign') else '')
-                print(f'  + roster {pc}: {entry["name"]}{warn}')
+        save_roster_additions(roster, added, dry_run)
         if not segments:
             print('leaders unavailable (no leader data) — skipping.')
             return
@@ -1362,13 +1370,7 @@ def main():
             history.pop(f'final_seen:{gid}', None)      # the wait is over
             write_json_atomic(HISTORY, history, ensure_ascii=False, indent=2)
             posted += 1
-        if added and not dry_run:
-            write_json_atomic(ROSTER, roster, ensure_ascii=False,
-                              indent=2, sort_keys=True)
-            for pc, entry in added:
-                warn = ('  ⚠ NEW IMPORT — if East-Asian, add to KEEP_SURNAME_FIRST'
-                        if entry.get('foreign') else '')
-                print(f'  + roster {pc}: {entry["name"]}{warn}')
+        save_roster_additions(roster, added, dry_run)
         if dry_run:
             print('\n(dry run — nothing posted, history untouched)')
         else:
@@ -1395,14 +1397,7 @@ def main():
                     if f'live:{g["gameId"]}' in history}
     segments += box_score_segments(finals, roster, added, attendance,
                                    skip_ids=already_live)
-    if added:
-        if not dry_run:
-            write_json_atomic(ROSTER, roster, ensure_ascii=False,
-                              indent=2, sort_keys=True)
-        for pc, entry in added:
-            warn = ('  ⚠ NEW IMPORT — if East-Asian, add to KEEP_SURNAME_FIRST'
-                    if entry.get('foreign') else '')
-            print(f'  + roster {pc}: {entry["name"]}{warn}')
+    save_roster_additions(roster, added, dry_run)
     if emit('results', date_str, segments, dry_run, history, len(finals)):
         archive_results(date_str, finals, cancelled)
 
