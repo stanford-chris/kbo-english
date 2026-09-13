@@ -637,88 +637,6 @@ def compose_results(date_str, finals, cancelled=()):
     return [('\n\n'.join(parts) + '\n\n', HASHTAGS)]
 
 
-def hits_errors_line(record):
-    """'Hits: 18–5 · Errors: 2–1' (away–home), or '' if the line score is
-    missing. En-dash separates the two team totals."""
-    r = record.get('scoreBoard', {}).get('rheb', {})
-    a, h = r.get('away'), r.get('home')
-    if not a or not h:
-        return ''
-    return (f'Hits: {a.get("h", 0)}–{h.get("h", 0)} · '
-            f'Errors: {a.get("e", 0)}–{h.get("e", 0)}')
-
-
-def decision_line(record, roster, added):
-    """'W: Naile (6-5) · L: Hatch (1-4) · S: Lee Young-ha (14)' — the winning,
-    losing and (if any) saving pitcher, romanized, with season W-L or save
-    count. Holds are omitted. '' if no decision parses."""
-    by_result = {p.get('wls'): p for p in record.get('pitchingResult', [])}
-    parts = []
-    for code, tag in (('W', 'W'), ('L', 'L'), ('S', 'S')):
-        p = by_result.get(code)
-        if not p:
-            continue
-        name = resolve_name(p.get('pCode'), p.get('name', ''), True, roster, added)
-        detail = p.get('s', 0) if code == 'S' else f'{p.get("w", 0)}-{p.get("l", 0)}'
-        parts.append(f'{tag}: {name} ({detail})')
-    return ' · '.join(parts)
-
-
-def hr_labels(game, record, roster, added):
-    """Every batter with a home run, as '🐯 Kim Do-yeong' labels (team emoji +
-    romanized name; a multi-homer game shows the count), away side first."""
-    labels = []
-    for side, code in (('away', game['awayTeamCode']),
-                       ('home', game['homeTeamCode'])):
-        emoji = TEAM_EMOJI.get(code, '')
-        for b in record.get('battersBoxscore', {}).get(side, []):
-            if b.get('hr', 0) > 0:
-                name = resolve_name(b.get('playerCode'), b.get('name', ''),
-                                    False, roster, added)
-                label = f'{emoji} {name}'.strip()
-                if b['hr'] > 1:
-                    label += f' ({b["hr"]})'
-                labels.append(label)
-    return labels
-
-
-def box_score_body(game, record, roster, added, attendance=None):
-    """One game's compact box score as a post body: the matchup and final
-    (with a non-regulation inning tag), then hits/errors, the pitching
-    decision, attendance, and any home runs. The HR list is trimmed to keep the
-    post under Bluesky's limit, appending '(+N more)' when batters are dropped
-    (a slugfest with long names could otherwise overflow).
-
-    This text is the fallback the post carries only if its card fails to render;
-    the card is the usual surface."""
-    a, h = game['awayTeamScore'], game['homeTeamScore']
-    head = (f'{team_label(game["awayTeamCode"])} {a} @ '
-            f'{team_label(game["homeTeamCode"])} {h}')
-    inn = final_innings(game.get('statusInfo'))
-    if inn and inn != 9:
-        head += f' ({inn})'
-    base = [head, '']
-    for line in (hits_errors_line(record),
-                 decision_line(record, roster, added)):
-        if line:
-            base.append(line)
-    if attendance:
-        base.append(f'Attendance: {attendance}')
-    labels = hr_labels(game, record, roster, added)
-
-    for n in range(len(labels), -1, -1):        # try all HRs, then trim from end
-        if n == len(labels) and labels:
-            hr = 'HR: ' + ', '.join(labels)
-        elif n > 0:
-            hr = 'HR: ' + ', '.join(labels[:n]) + f' (+{len(labels) - n} more)'
-        else:
-            hr = ''                             # n == 0: drop the HR line
-        body = '\n'.join(base + ([hr] if hr else [])) + '\n\n'
-        if grapheme_len(plain_text(body, [])) <= BLUESKY_LIMIT:
-            return body
-    return '\n'.join(base) + '\n\n'             # base alone over limit (unreachable)
-
-
 def tags_footer(tags):
     """The rendered hashtag line appended to a post, or '' if no tags. A blank
     line separates it from the body regardless of the body's trailing newlines."""
@@ -947,14 +865,13 @@ def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids
         if att:
             figure, venue = att
             att_str = f'{figure} · {venue}' if venue else figure
-        body = box_score_body(g, record, roster, added, att_str)
         game = data.box_input(g, record, roster, added, att_str)
         label = data.card_date(f'{g["gameId"][:4]}-{g["gameId"][4:6]}-{g["gameId"][6:8]}')
         card = build_card(
             lambda path, game=game, label=label:
                 kbo_card.render_box_score_card(label, game, path),
             data.box_alt(label, game))
-        carded = card_only((body, list(tags)), card)
+        carded = card_only(('', list(tags)), card)
         if carded is not None:
             segments.append(carded)
     return segments
