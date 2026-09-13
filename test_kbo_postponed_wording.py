@@ -5,13 +5,18 @@ Prompted by a real card on 28 August 2026: every game on the day rained out,
 and the results card still headed itself 'Final Scores' above five rows that
 each just said 'postponed' -- a header that claims exactly what the card goes
 on to say didn't happen. The same mismatch was in the card's own alt text and
-in compose_results, whose plaintext body still feeds that alt text (and, until
-2 September 2026, was also what a card-render failure posted as-is -- see the
-note above build_card in kbo_post.py for why that fallback was retired).
+in compose_results's plaintext body (until 2 September 2026, also what a
+card-render failure posted as-is -- see the note above build_card in
+kbo_post.py for why that fallback was retired, and kbo_post.py's own module
+docstring for why the body is still built and tested even though it now
+reaches no reader).
 
 Three surfaces, one rule: a slate with zero finals gets a 'Postponed' header,
-never 'Final scores' with nothing under it. A MIXED day (some finals, some
-rainouts) is unchanged -- 'Final Scores' still leads, and the postponed
+never 'Final scores' with nothing under it. Each surface computes this
+independently from the same raw game data -- compose_results's body does not
+feed the card's alt text or vice versa, which is exactly why the rule has to
+be pinned in all three places rather than just one. A MIXED day (some finals,
+some rainouts) is unchanged -- 'Final Scores' still leads, and the postponed
 fixtures still list separately underneath, exactly as before this fix.
 
 Stdlib only. render_results_card is exercised through a stubbed `_shoot`, so
@@ -127,9 +132,14 @@ class ResultsAltAllPostponed(unittest.TestCase):
 
 
 class ComposeResultsAllPostponed(unittest.TestCase):
-    """The plaintext body compose_results builds (it feeds the card's alt
-    text, and until 2 September 2026 was also posted as-is on a failed
-    render) must not claim final scores it doesn't have either."""
+    """The plaintext body compose_results builds reaches no reader today --
+    card_only() discards it whenever a card renders, and the post is held
+    rather than falling back to it when a card doesn't (until 2 September
+    2026 a failed render posted this body as-is instead). It is tested
+    anyway, on its own wording, as one of three independently-computed
+    surfaces (this body, the card's own title, and results_alt) that must
+    each say the same thing: it must not claim final scores it doesn't have
+    either."""
 
     def _game(self, away, home):
         return {'gameId': '20260828SSLG0', 'gameDate': '2026-08-28',

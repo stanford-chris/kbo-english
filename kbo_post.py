@@ -25,7 +25,15 @@ text is the headline alone — the card carries the detail and its alt text
 repeats that detail in full, so the information is never set twice in one post.
 If a card fails to render the post is held rather than shipped as plain text —
 see card_only(). The compose_* functions still build a full text body per
-segment regardless, because it feeds the card's own alt text.
+segment regardless, but that body reaches no reader: card_only() discards it
+outright whenever a card renders, and with_card()/emit() hold the whole post
+rather than fall back to it when a card doesn't render. The alt text is built
+separately, by kbo_card_data's own *_alt() functions, from the same raw game
+data the cards draw on — never from a compose_* body. compose_results in
+particular is kept and tested directly (test_kbo_postponed_wording.py) because
+its wording is one of three independently-coded surfaces (this body, the
+card's own title, and its alt text) that must each enforce the same
+final-vs-postponed rule, not because anything downstream reads the string.
 
 schedule/results/leaders draw their game and stat data from Naver Sports' public
 API; standings and the leaders' name romanization read the KBO English site.
