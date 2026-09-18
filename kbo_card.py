@@ -274,9 +274,8 @@ BASE_CSS = f"""
 html,body{{margin:0;background:#{SENTINEL}}}
 .card{{width:{CARD_WIDTH}px;box-sizing:border-box;background:{CREAM};color:{INK};
   border-top:5px solid {RED};padding:26px 30px 18px;font-family:{FONT_STACK}}}
-.top{{display:flex;align-items:baseline;justify-content:space-between}}
 .top .t{{font-size:19px;font-weight:700}}
-.top .d{{font-size:13px;color:{MUTED}}}
+.top .d{{font-size:13px;font-weight:700;letter-spacing:.02em;color:{RED};margin-top:4px}}
 .sub{{margin-top:6px;font-size:12px;color:{MUTED}}}
 .hr{{border-bottom:2px solid {INK};margin:14px 0 0}}
 .foot{{margin-top:14px;padding-top:12px;border-top:1px solid {RULE};
@@ -308,6 +307,14 @@ def _mark(item, prefix, size):
 
 
 def _head(title, date_label, emoji='🇰🇷 ⚾', subtitle=''):
+    # The date sits on its own stacked line under the title (.top .d,
+    # bold, RED), not right-justified beside it as before 18 September
+    # 2026 -- his standing rule across every card-posting bot, stated
+    # pointing at a London Index card whose date had gone missing
+    # entirely: a card's date belongs on the second line under the title.
+    # KBO never dropped a date, but the same-line layout didn't match the
+    # convention either, so it moved to match Seoul Index's/London
+    # Index's masthead shape (.dl/.dateline there).
     sub = f'<div class="sub">{_esc(subtitle)}</div>' if subtitle else ''
     return (f'<div class="top"><div class="t">{_esc(emoji)} {_esc(title)}</div>'
             f'<div class="d">{_esc(date_label)}</div></div>{sub}'
