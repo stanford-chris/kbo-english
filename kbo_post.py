@@ -1052,12 +1052,30 @@ def archive_results(date_str, finals, cancelled):
     write_json_atomic(RESULTS_ARCHIVE, arch, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def mode_of(argv):
+    """The one mode named on the command line, or 'results' when none is.
+    validate_argv() has already refused two."""
+    return next((m for m in ('schedule', 'standings', 'leaders', 'live') if m in argv),
+                'results')
+
+
+def date_arg(argv):
+    """The --date value, or None. validate_argv() has already checked its shape."""
+    return argv[argv.index('--date') + 1] if '--date' in argv else None
+
+
+def already_posted(history, key, ignore_history):
+    """True if `key` (e.g. 'standings:2026-09-20') is in the history and --all
+    was not given."""
+    return key in history and not ignore_history
+
+
 def results_candidates(argv):
     """Dates to try for the results digest, newest first: an explicit --date, or
     [today, yesterday] so a late-night run can catch a game that finished after
     the main run held (the date having rolled past midnight)."""
-    if '--date' in argv:
-        return [argv[argv.index('--date') + 1]]
+    if date_arg(argv):
+        return [date_arg(argv)]
     now = datetime.now(KST)
     return [now.strftime('%Y-%m-%d'), (now - timedelta(days=1)).strftime('%Y-%m-%d')]
 
@@ -1067,7 +1085,7 @@ def evaluate_results(candidates, history, ignore_history):
     final or postponement — that isn't already posted. A date with games still in
     progress is held (skipped). Returns (date, finals, cancelled) or None."""
     for d in candidates:
-        if f'results:{d}' in history and not ignore_history:
+        if already_posted(history, f'results:{d}', ignore_history):
             return None                     # newest unposted date is done; stop
         games = fetch_games(d)
         cancelled = [g for g in games if g.get('cancel')]
@@ -1094,7 +1112,7 @@ def pick_standings_date(candidates, history, ignore_history):
     behavior) because the two gates must agree on when a night is 'done', and
     then waits for the results digest to have actually gone out (see below)."""
     for d in candidates:
-        if f'standings:{d}' in history and not ignore_history:
+        if already_posted(history, f'standings:{d}', ignore_history):
             return None                     # newest unposted date is done; stop
         games = fetch_games(d)
         noncancel = [g for g in games if not g.get('cancel')]
@@ -1231,10 +1249,7 @@ def validate_argv(argv):
 
 def main():
     argv = sys.argv[1:]
-    mode = ('schedule' if 'schedule' in argv
-            else 'standings' if 'standings' in argv
-            else 'leaders' if 'leaders' in argv
-            else 'live' if 'live' in argv else 'results')
+    mode = mode_of(argv)
     dry_run = '--dry-run' in argv
     ignore_history = '--all' in argv
 
@@ -1260,9 +1275,9 @@ def main():
         # pick_standings_date holds until all of today's games are final (a later
         # poll catches a late finish) and skips off-days, where the table hasn't
         # moved since the previous evening's post.
-        if '--date' in argv:
-            date_str = argv[argv.index('--date') + 1]
-            if f'standings:{date_str}' in history and not ignore_history:
+        if date_arg(argv):
+            date_str = date_arg(argv)
+            if already_posted(history, f'standings:{date_str}', ignore_history):
                 print(f'standings for {date_str} already posted — skipping.')
                 return
         else:
@@ -1281,9 +1296,8 @@ def main():
         return
 
     if mode == 'leaders':
-        date_str = (argv[argv.index('--date') + 1] if '--date' in argv
-                    else datetime.now(KST).strftime('%Y-%m-%d'))
-        if f'leaders:{date_str}' in history and not ignore_history:
+        date_str = date_arg(argv) or datetime.now(KST).strftime('%Y-%m-%d')
+        if already_posted(history, f'leaders:{date_str}', ignore_history):
             print(f'leaders for {date_str} already posted — skipping.')
             return
         data = fetch_leaders(date_str[:4])
@@ -1298,9 +1312,8 @@ def main():
         return
 
     if mode == 'schedule':
-        date_str = (argv[argv.index('--date') + 1] if '--date' in argv
-                    else datetime.now(KST).strftime('%Y-%m-%d'))
-        if f'schedule:{date_str}' in history and not ignore_history:
+        date_str = date_arg(argv) or datetime.now(KST).strftime('%Y-%m-%d')
+        if already_posted(history, f'schedule:{date_str}', ignore_history):
             print(f'schedule card for {date_str} already posted — skipping.')
             return
         playable = [g for g in fetch_games(date_str) if not g.get('cancel')]
@@ -1326,9 +1339,9 @@ def main():
         # The walk stops at a night whose roundup HAS posted, because that post
         # carries the box scores live missed — without the bound, this run
         # would post them a second time the next evening.
-        dates = ([argv[argv.index('--date') + 1]] if '--date' in argv
+        dates = ([date_arg(argv)] if date_arg(argv)
                  else [d for d in results_candidates(argv)
-                       if f'results:{d}' not in history or ignore_history])
+                       if not already_posted(history, f'results:{d}', ignore_history)])
         finals_seen = 0
         pending = []
         for d in dates:
@@ -1336,7 +1349,7 @@ def main():
                       if g.get('statusCode') == FINAL and not g.get('cancel')]
             finals_seen += len(finals)
             pending += [g for g in finals
-                        if f'live:{g["gameId"]}' not in history or ignore_history]
+                        if not already_posted(history, f'live:{g["gameId"]}', ignore_history)]
         if not pending:
             print(f'{"/".join(dates) or "no open night"}: {finals_seen} final, '
                   f'none new to post live.')
@@ -1449,5 +1462,4 @@ if __name__ == '__main__':
     # Only real runs count as a heartbeat; a manual --dry-run should not make a
     # stalled bot look alive.
     if '--dry-run' not in sys.argv[1:]:
-        record_run(next((m for m in ('schedule', 'standings', 'leaders', 'live')
-                         if m in sys.argv[1:]), 'results'))
+        record_run(mode_of(sys.argv[1:]))
