@@ -8,7 +8,8 @@ Posts to [@kbo-english.bsky.social](https://bsky.app/profile/kbo-english.bsky.so
 
 - schedule — a pre-game thread: tonight's matchups and start times (KST), with
   the probable starting pitchers threaded underneath (morning).
-- live — one box score per game, as soon as it goes final. Held for up to 45
+- live — one box score per game, as soon as it goes final, each club's season
+  record (W-L, as it stood after that game) after its name. Held for up to 45
   minutes for KBO to publish the crowd figure, then posted without it.
 - results — a nightly final-scores digest, with a compact box score threaded per
   game, once every game on the slate is final.

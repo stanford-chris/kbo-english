@@ -240,5 +240,83 @@ class TestDatesAreUSOrder(unittest.TestCase):
         self.assertEqual(kbo_card_data.card_date('2026-07-01'), 'July 1')
 
 
+class TestBoxCardRecords(unittest.TestCase):
+    """The box score card prints each club's season record after its name
+    (his ask, 20 September 2026), read off the /record payload's own
+    awayStandings/homeStandings block — the record as of that game, which is
+    what a card for that game should say — and says it in the alt too."""
+
+    GAME = {'gameId': '20260920WOSK02026', 'awayTeamCode': 'WO',
+            'awayTeamScore': 5, 'homeTeamCode': 'SK', 'homeTeamScore': 10}
+    RECORD = {'awayStandings': {'w': 45, 'l': 85, 'd': 4, 'rank': 10},
+              'homeStandings': {'w': 58, 'l': 69, 'd': 5, 'rank': 7}}
+
+    def test_record_is_w_dash_l_without_draws(self):
+        import kbo_card_data
+        self.assertEqual(kbo_card_data.team_record({'w': 45, 'l': 85, 'd': 4}),
+                         '45-85')
+
+    def test_missing_block_or_figure_gives_empty_not_a_crash(self):
+        import kbo_card_data
+        self.assertEqual(kbo_card_data.team_record(None), '')
+        self.assertEqual(kbo_card_data.team_record({}), '')
+        self.assertEqual(kbo_card_data.team_record({'w': 45}), '')
+        self.assertEqual(kbo_card_data.team_record({'w': None, 'l': 85}), '')
+
+    def test_box_input_carries_both_records(self):
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, self.RECORD, {}, [])
+        self.assertEqual(game['away_record'], '45-85')
+        self.assertEqual(game['home_record'], '58-69')
+
+    def test_box_input_without_standings_block_omits_them(self):
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, {}, {}, [])
+        self.assertEqual(game['away_record'], '')
+        self.assertEqual(game['home_record'], '')
+
+    def test_alt_says_the_record_the_card_shows(self):
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, self.RECORD, {}, [])
+        alt = kbo_card_data.box_alt('September 20', game)
+        self.assertIn('Kiwoom Heroes (45-85) 5, SSG Landers (58-69) 10.', alt)
+
+    def test_alt_without_a_record_has_no_empty_parentheses(self):
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, {}, {}, [])
+        alt = kbo_card_data.box_alt('September 20', game)
+        self.assertIn('Kiwoom Heroes 5, SSG Landers 10.', alt)
+        self.assertNotIn('()', alt)
+
+    def test_card_html_puts_the_record_in_its_own_muted_span(self):
+        import kbo_card
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, self.RECORD, {}, [])
+        seen = {}
+        real = kbo_card._shoot
+        kbo_card._shoot = lambda html, path, label: seen.setdefault('html', html) or (path, (1, 1))
+        try:
+            kbo_card.render_box_score_card('September 20', game, 'x.png')
+        finally:
+            kbo_card._shoot = real
+        self.assertIn('Kiwoom Heroes<span class="rec">(45-85)</span>', seen['html'])
+        self.assertIn('SSG Landers<span class="rec">(58-69)</span>', seen['html'])
+        self.assertIn(f'.tm .n .rec{{color:{kbo_card.MUTED};font-weight:400',
+                      seen['html'])
+
+    def test_card_html_without_a_record_has_no_span(self):
+        import kbo_card
+        import kbo_card_data
+        game = kbo_card_data.box_input(self.GAME, {}, {}, [])
+        seen = {}
+        real = kbo_card._shoot
+        kbo_card._shoot = lambda html, path, label: seen.setdefault('html', html) or (path, (1, 1))
+        try:
+            kbo_card.render_box_score_card('September 20', game, 'x.png')
+        finally:
+            kbo_card._shoot = real
+        self.assertNotIn('class="rec"', seen['html'])
+
+
 if __name__ == '__main__':
     unittest.main()

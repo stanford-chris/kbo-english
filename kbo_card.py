@@ -551,6 +551,9 @@ BOX_CSS = f"""
   margin:18px 0}}
 .tm .n{{display:flex;align-items:center;gap:16px;font-size:22px;
   font-weight:700}}
+/* The season record after the club name: parenthesised, muted and regular
+   weight so the name still reads as the headline. */
+.tm .n .rec{{color:{MUTED};font-weight:400;font-size:16px;margin-left:-4px}}
 .tm .sc{{font-size:26px;font-weight:700}}
 .hr2{{border-bottom:2px solid {INK};margin:4px 0 0}}
 table.ls{{width:100%;border-collapse:collapse;margin:16px 0 4px;
@@ -622,6 +625,7 @@ def _fit_size(text, base=14, floor=11, width=KV_VALUE_WIDTH):
 def render_box_score_card(date_label, game, out_path, title='Final'):
     """One finished game. `game` is a dict:
         {away_emoji, away_name, away_score, home_emoji, home_name, home_score,
+         away_record, home_record: '45-85' season W-L, or ''/absent to omit
          line:   {...} for the line score (see _line_score_table), or None
          pitchers: [('W', 'Takada', '1-1'), ('S', 'Lee Young Ha', '14'), ...]
                    — only the name is bold; the code, the record and the red
@@ -629,12 +633,13 @@ def render_box_score_card(date_label, game, out_path, title='Final'):
          hr:     [{emoji/logo per team, 'names': 'Park Chan Ho, An Jae Seok (2)'}]
          extra:  optional [(label, value)] rows appended after HR}
     Returns (path, (w, h))."""
-    away = (f'<div class="tm"><div class="n">{_mark(game, "away", MARK_HEADLINE)}'
-            f'{_esc(game["away_name"])}</div>'
-            f'<div class="sc">{game["away_score"]}</div></div>')
-    home = (f'<div class="tm"><div class="n">{_mark(game, "home", MARK_HEADLINE)}'
-            f'{_esc(game["home_name"])}</div>'
-            f'<div class="sc">{game["home_score"]}</div></div>')
+    def row(prefix):
+        rec = game.get(f'{prefix}_record')
+        rec = f'<span class="rec">({_esc(rec)})</span>' if rec else ''
+        return (f'<div class="tm"><div class="n">{_mark(game, prefix, MARK_HEADLINE)}'
+                f'{_esc(game[f"{prefix}_name"])}{rec}</div>'
+                f'<div class="sc">{game[f"{prefix}_score"]}</div></div>')
+    away, home = row('away'), row('home')
 
     parts = [_head(title, date_label), away, home, '<div class="hr2"></div>']
     if game.get('line'):

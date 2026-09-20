@@ -306,13 +306,30 @@ def hr_groups(game, record, roster, added):
     return groups
 
 
+def team_record(standings):
+    """'45-85' from a /record payload's awayStandings/homeStandings block, or
+    '' when the block or either figure is missing. W-L only, no draws, matching
+    the standings card. Naver stamps the block with the record AS OF THAT GAME
+    (verified 20 September 2026: KT read 76-47 on its 18 September loss, 77-47
+    on the 19th's win, 78-47 on the 20th's), so a card rendered later still
+    shows the record the game left, not the one the club has since reached."""
+    if not standings:
+        return ''
+    w, l = standings.get('w'), standings.get('l')
+    if w is None or l is None:
+        return ''
+    return f'{w}-{l}'
+
+
 def box_input(game, record, roster, added, attendance=None):
     out = {
         **team_marks(game['awayTeamCode'], 'away'),
         'away_name': k.TEAMS.get(game['awayTeamCode'], game['awayTeamCode']),
+        'away_record': team_record(record.get('awayStandings')),
         'away_score': game['awayTeamScore'],
         **team_marks(game['homeTeamCode'], 'home'),
         'home_name': k.TEAMS.get(game['homeTeamCode'], game['homeTeamCode']),
+        'home_record': team_record(record.get('homeStandings')),
         'home_score': game['homeTeamScore'],
         'line': line_input(game, record),
         'pitchers': pitcher_decisions(record, roster, added),
@@ -536,9 +553,13 @@ def plural(n, word):
 
 
 def box_alt(date_label, game):
+    def side(prefix):
+        rec = game.get(f'{prefix}_record')
+        return (f'{game[f"{prefix}_name"]}'
+                + (f' ({rec})' if rec else '')
+                + f' {game[f"{prefix}_score"]}')
     parts = [f'Box score for {date_label}.',
-             f'{game["away_name"]} {game["away_score"]}, '
-             f'{game["home_name"]} {game["home_score"]}.']
+             f'{side("away")}, {side("home")}.']
     line = game.get('line')
     if line:
         innings = max(len(line['away_inn']), len(line['home_inn']))

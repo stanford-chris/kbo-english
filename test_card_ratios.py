@@ -164,6 +164,7 @@ class CardRatioTests(unittest.TestCase):
         """A 12-inning game with all three pitcher decisions, home runs for
         both clubs and an attendance row: the tallest this card gets."""
         game = {**fixture(0), 'away_score': '7', 'home_score': '6',
+                'away_record': '78-47', 'home_record': '76-52',
                 'line': {**mark('KT', 'away'), **mark('SS', 'home'),
                          'away_inn': list('001000200013'),
                          'home_inn': list('20000010001'),
