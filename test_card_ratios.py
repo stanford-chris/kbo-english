@@ -153,6 +153,7 @@ class CardRatioTests(unittest.TestCase):
 
     def test_results_full_slate_plus_a_rainout(self):
         games = [{**fixture(i), 'away_score': '16', 'home_score': '4',
+                  'away_record': '78-47', 'home_record': '45-85',
                   'winner': 'away', 'note': 'rout'}
                  for i in range(FULL_SLATE - 1)]
         _, size = kbo_card.render_results_card(

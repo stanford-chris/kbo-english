@@ -11,8 +11,9 @@ Posts to [@kbo-english.bsky.social](https://bsky.app/profile/kbo-english.bsky.so
 - live — one box score per game, as soon as it goes final, each club's season
   record (W-L, as it stood after that game) after its name. Held for up to 45
   minutes for KBO to publish the crowd figure, then posted without it.
-- results — a nightly final-scores digest, with a compact box score threaded per
-  game, once every game on the slate is final.
+- results — a nightly final-scores digest, each club's season record after its
+  name, with a compact box score threaded per game, once every game on the
+  slate is final.
 - standings — a daily rank / W-L / games-back table, held until the night's
   results digest has gone out so the scores always lead the table.
 - leaders — a weekly season-leaders thread, top 5 in each core hitting and

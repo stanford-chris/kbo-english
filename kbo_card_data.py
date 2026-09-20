@@ -150,10 +150,12 @@ def results_input(games, records, roster, added):
         out.append({
             **team_marks(g['awayTeamCode'], 'away'),
             'away_name': k.TEAMS.get(g['awayTeamCode'], g['awayTeamCode']),
+            'away_record': team_record((record or {}).get('awayStandings')),
             'away_score': a,
             'away_pitchers': away_pitchers,
             **team_marks(g['homeTeamCode'], 'home'),
             'home_name': k.TEAMS.get(g['homeTeamCode'], g['homeTeamCode']),
+            'home_record': team_record((record or {}).get('homeStandings')),
             'home_score': h,
             'home_pitchers': home_pitchers,
             'winner': winner,
@@ -520,15 +522,19 @@ def results_alt(date_label, rows, postponed=()):
                 f'for {date_label}: {listed}.')
     parts = [f'Final scores for {date_label}.']
     for r in rows:
+        # Club name with its season record, as the card prints it.
+        def club(side, r=r):
+            rec = r.get(f'{side}_record')
+            return r[f'{side}_name'] + (f' ({rec})' if rec else '')
         w = r.get('winner')
         if w == 'away':
-            line = (f'{r["away_name"]} beat {r["home_name"]} '
+            line = (f'{club("away")} beat {club("home")} '
                     f'{r["away_score"]}–{r["home_score"]}')
         elif w == 'home':
-            line = (f'{r["home_name"]} beat {r["away_name"]} '
+            line = (f'{club("home")} beat {club("away")} '
                     f'{r["home_score"]}–{r["away_score"]}')
         else:
-            line = (f'{r["away_name"]} and {r["home_name"]} tied '
+            line = (f'{club("away")} and {club("home")} tied '
                     f'{r["away_score"]}–{r["home_score"]}')
         extra = []
         decs = (r.get('away_pitchers') or []) + (r.get('home_pitchers') or [])

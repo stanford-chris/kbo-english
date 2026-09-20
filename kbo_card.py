@@ -336,6 +336,8 @@ RESULTS_CSS = f"""
 .row .l{{text-align:right}}
 .row .r{{text-align:left}}
 .nm{{font-size:17px;font-weight:700}}
+/* Season record after the club name, as on the box score card. */
+.nm .rec{{color:{MUTED};font-weight:400;font-size:13px}}
 .s{{font-size:17px;white-space:nowrap;letter-spacing:0.04em}}
 .s b{{color:{RED};font-weight:700}}
 .s .dot{{color:{RED}}}
@@ -358,8 +360,10 @@ def _decisions(pitchers):
 
 def _result_side(g, side, cls):
     """One club's cell: its mark and name, with its pitcher decisions beneath."""
+    rec = g.get(f'{side}_record')
+    rec = f' <span class="rec">({_esc(rec)})</span>' if rec else ''
     nm = (f'<div class="nm">{_mark(g, side, MARK_ROW)} '
-          f'{_esc(g[f"{side}_name"])}</div>')
+          f'{_esc(g[f"{side}_name"])}{rec}</div>')
     pitchers = g.get(f'{side}_pitchers') or []
     pit = f'<div class="pit">{_decisions(pitchers)}</div>' if pitchers else ''
     return f'<div class="{cls}">{nm}{pit}</div>'
@@ -391,6 +395,7 @@ def render_results_card(date_label, games, out_path, title=None,
                         postponed=()):
     """The daily digest. `games` is a list of dicts:
         {away_emoji, away_name, away_score, home_emoji, home_name, home_score,
+         away_record, home_record ('45-85' season W-L, or ''/absent to omit),
          note}  — note is a short tag ('rout', 'shutout') or '' for none.
     `postponed` lists rained-out games in the same shape minus the scores; they
     render after the finals, so an all-rainout day still makes a card.

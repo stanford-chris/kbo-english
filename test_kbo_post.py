@@ -318,5 +318,69 @@ class TestBoxCardRecords(unittest.TestCase):
         self.assertNotIn('class="rec"', seen['html'])
 
 
+class TestDigestCardRecords(unittest.TestCase):
+    """The nightly final-scores digest prints the same season record after
+    each club's name as the box score card (his ask, 20 September 2026,
+    right after the box card got it), from the same per-game /record block."""
+
+    GAMES = [{'gameId': '20260919LGHH02026', 'gameDateTime': '2026-09-19T18:00',
+              'awayTeamCode': 'LG', 'awayTeamScore': 2,
+              'homeTeamCode': 'HH', 'homeTeamScore': 1}]
+    RECORDS = {'20260919LGHH02026': {
+        'awayStandings': {'w': 74, 'l': 55, 'd': 1},
+        'homeStandings': {'w': 54, 'l': 71, 'd': 4},
+        'pitchingResult': []}}
+
+    def test_results_input_carries_both_records(self):
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, self.RECORDS, {}, [])
+        self.assertEqual(rows[0]['away_record'], '74-55')
+        self.assertEqual(rows[0]['home_record'], '54-71')
+
+    def test_a_game_with_no_record_fetched_omits_them(self):
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, {}, {}, [])
+        self.assertEqual(rows[0]['away_record'], '')
+        self.assertEqual(rows[0]['home_record'], '')
+
+    def test_alt_says_the_records_the_card_shows(self):
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, self.RECORDS, {}, [])
+        alt = kbo_card_data.results_alt('September 19', rows)
+        self.assertIn('LG Twins (74-55) beat Hanwha Eagles (54-71) 2–1', alt)
+
+    def test_alt_without_records_has_no_empty_parentheses(self):
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, {}, {}, [])
+        alt = kbo_card_data.results_alt('September 19', rows)
+        self.assertIn('LG Twins beat Hanwha Eagles 2–1', alt)
+        self.assertNotIn('()', alt)
+
+    def _html(self, rows):
+        import kbo_card
+        seen = {}
+        real = kbo_card._shoot
+        kbo_card._shoot = lambda html, path, label: seen.setdefault('html', html) or (path, (1, 1))
+        try:
+            kbo_card.render_results_card('September 19', rows, 'x.png')
+        finally:
+            kbo_card._shoot = real
+        return seen['html']
+
+    def test_card_html_puts_the_record_in_its_own_muted_span(self):
+        import kbo_card
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, self.RECORDS, {}, [])
+        html = self._html(rows)
+        self.assertIn('LG Twins <span class="rec">(74-55)</span>', html)
+        self.assertIn('Hanwha Eagles <span class="rec">(54-71)</span>', html)
+        self.assertIn(f'.nm .rec{{color:{kbo_card.MUTED};font-weight:400', html)
+
+    def test_card_html_without_records_has_no_span(self):
+        import kbo_card_data
+        rows = kbo_card_data.results_input(self.GAMES, {}, {}, [])
+        self.assertNotIn('class="rec"', self._html(rows))
+
+
 if __name__ == '__main__':
     unittest.main()
