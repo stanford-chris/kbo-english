@@ -83,12 +83,15 @@ def show_cutline(on):
 
 
 def card_date(date_str):
-    """'2026-07-18' -> 'July 18'. Cards spell the month out; kbo_post's own
-    format_date stays abbreviated because the text posts are character-capped.
-    U.S. month-day order on this account alone (his call, 12 September 2026),
-    over the house day-first rule; format_date matches."""
+    """'2026-07-18' -> 'Saturday, July 18'. Cards spell the month out;
+    kbo_post's own format_date stays abbreviated because the text posts are
+    character-capped. U.S. month-day order on this account alone (his call,
+    12 September 2026), over the house day-first rule; format_date matches.
+    The weekday leads, his call on 24 September 2026, after Seoul Index and
+    London Index. It reaches the alt text too ("Final scores for Wednesday,
+    September 23."), which bot_health_check.alt_night() reads."""
     d = date.fromisoformat(date_str)
-    return f'{d:%B} {d.day}'
+    return f'{d:%A}, {d:%B} {d.day}'
 
 
 def innings_pitched(raw):

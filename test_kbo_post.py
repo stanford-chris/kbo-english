@@ -236,8 +236,9 @@ class TestDatesAreUSOrder(unittest.TestCase):
 
     def test_card_label_is_month_day_spelled_out(self):
         import kbo_card_data
-        self.assertEqual(kbo_card_data.card_date('2026-09-12'), 'September 12')
-        self.assertEqual(kbo_card_data.card_date('2026-07-01'), 'July 1')
+        # The weekday leads, his call on 24 September 2026.
+        self.assertEqual(kbo_card_data.card_date('2026-09-12'), 'Saturday, September 12')
+        self.assertEqual(kbo_card_data.card_date('2026-07-01'), 'Wednesday, July 1')
 
 
 class TestBoxCardRecords(unittest.TestCase):
