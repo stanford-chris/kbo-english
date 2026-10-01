@@ -236,6 +236,93 @@ def is_postseason(g):
     return str(g.get('roundCode') or '').startswith(POSTSEASON_PREFIX)
 
 
+# Each round's card title and the wins that take the series. The ladder: 5th
+# at 4th in the wild card, where the 4th seed starts a win up (so 2 wins to
+# take it, with the head start counted, as Naver's own seriesOutcome counts
+# it); the winner at 3rd, best of five; at 2nd, best of five; then against 1st
+# in the Korean Series, best of seven. Matches the 2025 feed game for game.
+ROUNDS = {'kbo_ps_wd': ('Wild Card', 2), 'kbo_ps_sp': ('Semi-Playoff', 3),
+          'kbo_ps_po': ('Playoff', 3), 'kbo_ps_ks': ('Korean Series', 4)}
+SERIES_LOOKBACK_DAYS = 10
+
+
+def series_before(g):
+    """{club code: series wins} going into game `g`.
+
+    Read off the previous finished game of the same series rather than off
+    `g`'s own seriesOutcome, whose shape before first pitch has never been
+    observed (every 2025 game is long final). A finished game's figure is
+    settled, so this is the one reading known to be right."""
+    home, away = g['homeTeamCode'], g['awayTeamCode']
+    day = datetime.strptime(g['gameDate'], '%Y-%m-%d')
+    for n in range(1, SERIES_LOOKBACK_DAYS + 1):
+        d = (day - timedelta(days=n)).strftime('%Y-%m-%d')
+        for p in fetch_games(d):
+            if (p.get('roundCode') == g.get('roundCode')
+                    and {p['homeTeamCode'], p['awayTeamCode']} == {home, away}
+                    and p.get('statusCode') == FINAL and not p.get('cancel')
+                    and p.get('seriesOutcome')):
+                o = p['seriesOutcome']
+                return {p['homeTeamCode']: o.get('home', 0),
+                        p['awayTeamCode']: o.get('away', 0)}
+    # The opener. The 4th seed hosts the wild card and carries its head start.
+    return {home: 1 if g.get('roundCode') == 'kbo_ps_wd' else 0, away: 0}
+
+
+def series_after(g):
+    """{club code: series wins} once finished game `g` is counted."""
+    wins = series_before(g)
+    side = {'HOME': 'homeTeamCode', 'AWAY': 'awayTeamCode'}.get(g.get('winner'))
+    if side:
+        wins[g[side]] += 1
+    return wins
+
+
+def series_text(wins, need):
+    """'LG leads series 2–0', 'Series tied 1–1', 'LG wins series 4–1', or ''
+    before a series with no wins on the board."""
+    (a, na), (b, nb) = sorted(wins.items(), key=lambda kv: -kv[1])
+    if na == nb:
+        return f'Series tied {na}–{nb}' if na else ''
+    verb = 'wins' if na >= need else 'leads'
+    return f'{SHORT_NAMES.get(a, a)} {verb} series {na}–{nb}'
+
+
+def postseason_label(g, final):
+    """(title, subtitle) for a playoff game's cards — ('Korean Series',
+    'Game 2 · LG leads series 2–0') — or None for any other game. `final`
+    counts the game's own result; otherwise the series stands as it was going
+    in, which is what the morning schedule card wants."""
+    round_ = ROUNDS.get(g.get('roundCode'))
+    if not round_:
+        return None
+    title, need = round_
+    wins = series_after(g) if final else series_before(g)
+    bits = [f'Game {g["seriesGameNo"]}'] if g.get('seriesGameNo') else []
+    text = series_text(wins, need)
+    if text:
+        bits.append(text)
+    return title, ' · '.join(bits)
+
+
+def slate_label(games, final):
+    """The one postseason label every game in `games` shares, or None. A
+    playoff night is a single game; anything else keeps the ordinary title."""
+    labels = {postseason_label(g, final) for g in games}
+    if not games or len(labels) != 1 or None in labels:
+        return None
+    return labels.pop()
+
+
+# The postseason field post goes out once, the first run after the regular
+# season's last game. SEASON_END (kbo_card_data) only bounds when to look, so
+# a constant left stale costs nothing in mid-season and cannot fire it in some
+# other year; the feed decides: no regular-season game today or in the
+# FIELD_LOOKAHEAD_DAYS after it means the table is final.
+FIELD_WINDOW_DAYS = (-7, 30)
+FIELD_LOOKAHEAD_DAYS = 14
+
+
 # How far back the leaders run looks for a regular-season game. A week with
 # none (the postseason, the winter) has nothing new to report, so it skips
 # rather than reposting last week's boards.
@@ -875,10 +962,13 @@ def attach_results_card(date_str, finals, cancelled, segments, roster, added):
                               roster, added)
     ppd = data.postponed_input(cancelled)
     label = data.card_date(date_str)
+    ps = slate_label(finals, final=True) if finals else None
+    title, sub = ps or (None, '')
     card = build_card(
         lambda path: kbo_card.render_results_card(label, rows, path,
+                                                  title=title, subtitle=sub,
                                                   postponed=ppd),
-        data.results_alt(label, rows, ppd))
+        data.results_alt(label, rows, ppd, label=ps))
     return with_card(segments, 0, card)
 
 
@@ -913,10 +1003,13 @@ def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids
             att_str = f'{figure} · {venue}' if venue else figure
         game = data.box_input(g, record, roster, added, att_str)
         label = data.card_date(f'{g["gameId"][:4]}-{g["gameId"][4:6]}-{g["gameId"][6:8]}')
+        ps = postseason_label(g, final=True)
+        title, sub = ps or ('Final', '')
         card = build_card(
-            lambda path, game=game, label=label:
-                kbo_card.render_box_score_card(label, game, path),
-            data.box_alt(label, game))
+            lambda path, game=game, label=label, title=title, sub=sub:
+                kbo_card.render_box_score_card(label, game, path,
+                                               title=title, subtitle=sub),
+            data.box_alt(label, game, label=ps))
         carded = card_only(('', list(tags)), card)
         if carded is not None:
             segments.append(carded)
@@ -941,10 +1034,16 @@ def attach_schedule_cards(date_str, playable, roster, segments):
     label = data.card_date(date_str)
 
     rows, subtitle = data.schedule_input(playable)
+    ps = slate_label(playable, final=False)
+    title, alt_sub = 'Today’s Games', subtitle
+    if ps:
+        title = ps[0]
+        subtitle = ' · '.join(x for x in (ps[1], subtitle) if x)
     fixtures = build_card(
         lambda path: kbo_card.render_schedule_card(label, rows, path,
+                                                   title=title,
                                                    subtitle=subtitle),
-        data.schedule_alt(label, rows, subtitle))
+        data.schedule_alt(label, rows, alt_sub, label=ps))
     out = with_card(segments, 0, fixtures)
     if out is None:
         return None
@@ -1135,6 +1234,51 @@ def regular_season_week(date_str):
     return False
 
 
+def field_due(today_str, history, ignore_history):
+    """True once the regular season is over and the field post hasn't gone."""
+    import kbo_card_data as data
+    today = datetime.strptime(today_str, '%Y-%m-%d').date()
+    if already_posted(history, f'field:{today.year}', ignore_history):
+        return False
+    lo, hi = FIELD_WINDOW_DAYS
+    if not (lo <= (today - data.SEASON_END).days <= hi):
+        return False
+    for n in range(FIELD_LOOKAHEAD_DAYS + 1):
+        d = (today + timedelta(days=n)).strftime('%Y-%m-%d')
+        if any(not g.get('cancel') and not is_postseason(g)
+               for g in fetch_games(d)):
+            return False
+    return True
+
+
+def post_field_if_due(today_str, history, dry_run, ignore_history):
+    """The postseason field: the top five with their records and the round
+    each enters. Rides on the schedule and standings runs rather than a job of
+    its own, so the 11:00 schedule fire posts it the morning after the season
+    ends and the evening standings polls carry it if that table was not yet
+    populated (the KBO English table has come back empty as late as 10:30)."""
+    import kbo_card
+    import kbo_card_data as data
+    try:
+        if not field_due(today_str, history, ignore_history):
+            return
+    except RuntimeError as exc:
+        print(f'field: could not read the schedule ({exc}) — skipping.')
+        return
+    rows = fetch_standings()[:PLAYOFF_SPOTS]
+    if len(rows) < PLAYOFF_SPOTS:
+        print('field: standings unavailable (KBO site) — holding.')
+        return
+    seeds = data.field_input(rows)
+    label = data.card_date(today_str)
+    card = build_card(
+        lambda path: kbo_card.render_field_card(label, seeds, path,
+                                             subtitle=data.FIELD_SUBTITLE),
+        data.field_alt(label, seeds))
+    segments = [('', list(HASHTAGS), card)] if card else None
+    emit('field', today_str[:4], segments, dry_run, history, len(seeds))
+
+
 def pick_standings_date(candidates, history, ignore_history):
     """The date whose standings the evening run should post, newest first, or
     None if there's nothing new yet. A date settles once all of its games are
@@ -1320,6 +1464,8 @@ def main():
                 print(f'standings for {date_str} already posted — skipping.')
                 return
         else:
+            post_field_if_due(datetime.now(KST).strftime('%Y-%m-%d'),
+                              history, dry_run, ignore_history)
             date_str = pick_standings_date(
                 results_candidates(argv), history, ignore_history)
             if not date_str:
@@ -1356,6 +1502,8 @@ def main():
 
     if mode == 'schedule':
         date_str = date_arg(argv) or datetime.now(KST).strftime('%Y-%m-%d')
+        if not date_arg(argv):
+            post_field_if_due(date_str, history, dry_run, ignore_history)
         if already_posted(history, f'schedule:{date_str}', ignore_history):
             print(f'schedule card for {date_str} already posted — skipping.')
             return

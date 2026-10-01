@@ -516,7 +516,23 @@ def standings_input(rows):
 # so the two cannot drift.
 # --------------------------------------------------------------------------
 
-def results_alt(date_label, rows, postponed=()):
+def label_alt(label):
+    """A postseason (title, subtitle) as a sentence for alt text: 'Korean
+    Series, Game 2. LG leads series 2–0.' Empty for None. It follows each
+    alt's opening sentence rather than replacing it, because the health check
+    finds the bot's posts by those openings ('Final scores for ')."""
+    if not label:
+        return ''
+    title, sub = label
+    return f'{title}, {sub.replace(" · ", ". ")}.' if sub else f'{title}.'
+
+
+def stop(text):
+    """End a sentence once: a time like '2 p.m.' already carries its stop."""
+    return text if text.endswith('.') else text + '.'
+
+
+def results_alt(date_label, rows, postponed=(), label=None):
     if not rows and postponed:
         # No finals at all: matches render_results_card's 'Postponed' title
         # rather than opening with a claim of final scores it doesn't have.
@@ -525,6 +541,8 @@ def results_alt(date_label, rows, postponed=()):
         return (f'{plural(len(postponed), "game").capitalize()} postponed '
                 f'for {date_label}: {listed}.')
     parts = [f'Final scores for {date_label}.']
+    if label:
+        parts.append(label_alt(label))
     for r in rows:
         # Club name with its season record, as the card prints it.
         def club(side, r=r):
@@ -562,14 +580,16 @@ def plural(n, word):
     return f'{n} {word}' if n == 1 else f'{n} {word}s'
 
 
-def box_alt(date_label, game):
+def box_alt(date_label, game, label=None):
     def side(prefix):
         rec = game.get(f'{prefix}_record')
         return (f'{game[f"{prefix}_name"]}'
                 + (f' ({rec})' if rec else '')
                 + f' {game[f"{prefix}_score"]}')
-    parts = [f'Box score for {date_label}.',
-             f'{side("away")}, {side("home")}.']
+    parts = [f'Box score for {date_label}.']
+    if label:
+        parts.append(label_alt(label))
+    parts.append(f'{side("away")}, {side("home")}.')
     line = game.get('line')
     if line:
         innings = max(len(line['away_inn']), len(line['home_inn']))
@@ -628,22 +648,49 @@ def starters_alt(date_label, rows, part=None, of=None):
     return ' '.join(parts)
 
 
-def schedule_alt(date_label, rows, subtitle):
+def schedule_alt(date_label, rows, subtitle, label=None):
     parts = [f'Today’s games, {date_label}.']
+    if label:
+        parts.append(label_alt(label))
     if subtitle:
         # 'All games start at 6:30 p.m.' already ends in a stop.
-        parts.append(subtitle if subtitle.endswith('.') else subtitle + '.')
+        parts.append(stop(subtitle))
     for r in rows:
         line = f'{r["away_name"]} at {r["home_name"]}'
         if r.get('time'):
             line += f', {r["time"]}'
-        parts.append(line + '.')
+        parts.append(stop(line))
     return ' '.join(parts)
 
 
 def leaders_alt(date_label, title, rows):
     parts = [f'{title}, season leaders, {date_label}.']
     parts += [f'{r["rank"]}. {r["name"]}, {r["value"]}.' for r in rows]
+    return ' '.join(parts)
+
+
+# The round each of the five seeds enters, for the postseason field card.
+# Index 0 is the 1st seed.
+FIELD_ENTRY = [('Korean Series', 'best of 7'), ('Playoff', 'best of 5'),
+               ('Semi-Playoff', 'best of 5'), ('Wild Card', 'needs 1 win'),
+               ('Wild Card', 'needs 2 wins')]
+FIELD_SUBTITLE = 'Each round’s winner plays the next seed up'
+
+
+def field_input(rows):
+    """The top five from fetch_standings(), each with the round it enters."""
+    return [{**r, 'seed': i, 'round': rnd, 'terms': terms}
+            for i, (r, (rnd, terms)) in enumerate(
+                zip(standings_input(rows), FIELD_ENTRY), start=1)]
+
+
+def field_alt(date_label, seeds):
+    words = {'7': 'seven', '5': 'five', '1': 'one', '2': 'two'}
+    parts = [f'Postseason field, {date_label}. {FIELD_SUBTITLE}.']
+    for s in seeds:
+        terms = re.sub(r'\d', lambda m: words[m.group(0)], s['terms'])
+        parts.append(f'{s["seed"]}. {s["name"]}, {s["w"]}-{s["l"]}: '
+                     f'{s["round"]}, {terms}.')
     return ' '.join(parts)
 
 

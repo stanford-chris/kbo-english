@@ -169,6 +169,111 @@ class TestPostseasonLeavesTablesAlone(Patched):
         self.assertFalse(k.is_postseason({'gameId': 'X'}))
 
 
+def ps_game(date, home, away, rc, no, winner=None, outcome=None):
+    g = game(date, f'{date}{away}{home}', home=home, away=away,
+             final=winner is not None, round_code=rc)
+    g.update(seriesGameNo=no, winner=winner, seriesOutcome=outcome)
+    return g
+
+
+class TestPostseasonLabels(Patched):
+    """Series scores are worked out from the previous finished game, then
+    checked here against the shape of the real 2025 feed."""
+
+    def feed(self, games):
+        k.fetch_games = lambda d: [g for g in games if g['gameDate'] == d]
+
+    def test_wild_card_opener_carries_the_head_start(self):
+        g = ps_game('2025-10-06', 'SS', 'NC', 'kbo_ps_wd', 1)
+        self.feed([g])
+        self.assertEqual(k.postseason_label(g, final=False),
+                         ('Wild Card', 'Game 1 · Samsung leads series 1–0'))
+
+    def test_wild_card_upset_ties_it_and_game_two_decides(self):
+        g1 = ps_game('2025-10-06', 'SS', 'NC', 'kbo_ps_wd', 1, 'AWAY',
+                     {'home': 1, 'draw': 0, 'away': 1})
+        g2 = ps_game('2025-10-07', 'SS', 'NC', 'kbo_ps_wd', 2, 'HOME')
+        self.feed([g1, g2])
+        self.assertEqual(k.postseason_label(g2, final=False)[1],
+                         'Game 2 · Series tied 1–1')
+        self.assertEqual(k.postseason_label(g2, final=True)[1],
+                         'Game 2 · Samsung wins series 2–1')
+
+    def test_series_score_follows_the_clubs_when_home_and_away_swap(self):
+        g2 = ps_game('2025-10-27', 'LG', 'HH', 'kbo_ps_ks', 2, 'HOME',
+                     {'home': 2, 'draw': 0, 'away': 0})
+        g3 = ps_game('2025-10-29', 'HH', 'LG', 'kbo_ps_ks', 3, 'HOME')
+        self.feed([g2, g3])
+        self.assertEqual(k.series_after(g3), {'LG': 2, 'HH': 1})
+        self.assertEqual(k.postseason_label(g3, final=True),
+                         ('Korean Series', 'Game 3 · LG leads series 2–1'))
+
+    def test_a_rained_out_game_is_not_counted(self):
+        ppd = ps_game('2025-10-10', 'SK', 'SS', 'kbo_ps_sp', 2, 'AWAY',
+                      {'home': 0, 'draw': 0, 'away': 1})
+        ppd['cancel'] = True
+        g = ps_game('2025-10-11', 'SK', 'SS', 'kbo_ps_sp', 2)
+        self.feed([ppd, g])
+        self.assertEqual(k.postseason_label(g, final=False),
+                         ('Semi-Playoff', 'Game 2'))
+
+    def test_seven_game_series_needs_four(self):
+        self.assertEqual(k.series_text({'LG': 3, 'HH': 1}, 4), 'LG leads series 3–1')
+        self.assertEqual(k.series_text({'LG': 4, 'HH': 1}, 4), 'LG wins series 4–1')
+
+    def test_regular_season_game_has_no_label(self):
+        self.assertIsNone(k.postseason_label(game(TODAY, 'A'), final=True))
+        self.assertIsNone(k.slate_label([game(TODAY, 'A')], final=True))
+
+    def test_alt_sentence(self):
+        import kbo_card_data as data
+        self.assertEqual(data.label_alt(('Korean Series', 'Game 2 · LG leads series 2–0')),
+                         'Korean Series, Game 2. LG leads series 2–0.')
+
+    def test_alt_keeps_the_opening_the_health_check_reads(self):
+        import kbo_card_data as data
+        alt = data.results_alt('Monday, October 27', [], (),
+                               label=('Korean Series', 'Game 2'))
+        self.assertTrue(alt.startswith('Final scores for '))
+
+
+class TestScheduleAltEndsOnce(unittest.TestCase):
+
+    def test_a_time_ending_in_p_m_gets_no_second_stop(self):
+        import kbo_card_data as data
+        alt = data.schedule_alt('Sunday, October 26',
+                                [{'away_name': 'A', 'home_name': 'B',
+                                  'time': '2 p.m.'}], '')
+        self.assertTrue(alt.endswith('A at B, 2 p.m.'))
+
+
+class TestFieldPostsOnceTheSeasonEnds(Patched):
+
+    def due(self, today, slates, history=None):
+        k.fetch_games = lambda d: slates.get(d, [])
+        return k.field_due(today, history or {}, False)
+
+    def test_due_the_day_after_the_last_regular_season_game(self):
+        self.assertTrue(self.due('2026-10-13', {'2026-10-12': [game('2026-10-12', 'A')]}))
+
+    def test_not_due_while_a_regular_season_game_is_still_ahead(self):
+        self.assertFalse(self.due('2026-10-13', {'2026-10-20': [game('2026-10-20', 'A')]}))
+
+    def test_playoff_games_ahead_do_not_hold_it(self):
+        ps = [game('2026-10-15', 'P', round_code='kbo_ps_wd')]
+        self.assertTrue(self.due('2026-10-13', {'2026-10-15': ps}))
+
+    def test_posts_once(self):
+        self.assertFalse(self.due('2026-10-14', {}, {'field:2026': {}}))
+
+    def test_never_looks_outside_the_window(self):
+        def boom(d):
+            raise AssertionError('fetched outside the window')
+        k.fetch_games = boom
+        self.assertFalse(k.field_due('2026-08-01', {}, False))
+        self.assertFalse(k.field_due('2027-01-10', {}, False))
+
+
 class TestLiveWalksBackANight(Patched):
 
     def setUp(self):

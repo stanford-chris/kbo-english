@@ -392,7 +392,7 @@ def _postponed_block(g):
 
 
 def render_results_card(date_label, games, out_path, title=None,
-                        postponed=()):
+                        postponed=(), subtitle=''):
     """The daily digest. `games` is a list of dicts:
         {away_emoji, away_name, away_score, home_emoji, home_name, home_score,
          away_record, home_record ('45-85' season W-L, or ''/absent to omit),
@@ -410,7 +410,7 @@ def render_results_card(date_label, games, out_path, title=None,
         raise CardRenderError('no games to render')
     if title is None:
         title = 'Final Scores' if games else 'Postponed'
-    body = (f'<div class="card">{_head(title, date_label)}'
+    body = (f'<div class="card">{_head(title, date_label, subtitle=subtitle)}'
             f'{"".join(_game_block(g) for g in games)}'
             f'{"".join(_postponed_block(g) for g in postponed)}{FOOTER}</div>')
     return _shoot(_document(RESULTS_CSS, body), out_path, label=title)
@@ -627,7 +627,8 @@ def _fit_size(text, base=14, floor=11, width=KV_VALUE_WIDTH):
     return floor
 
 
-def render_box_score_card(date_label, game, out_path, title='Final'):
+def render_box_score_card(date_label, game, out_path, title='Final',
+                          subtitle=''):
     """One finished game. `game` is a dict:
         {away_emoji, away_name, away_score, home_emoji, home_name, home_score,
          away_record, home_record: '45-85' season W-L, or ''/absent to omit
@@ -646,7 +647,8 @@ def render_box_score_card(date_label, game, out_path, title='Final'):
                 f'<div class="sc">{game[f"{prefix}_score"]}</div></div>')
     away, home = row('away'), row('home')
 
-    parts = [_head(title, date_label), away, home, '<div class="hr2"></div>']
+    parts = [_head(title, date_label, subtitle=subtitle), away, home,
+             '<div class="hr2"></div>']
     if game.get('line'):
         parts.append(_line_score_table(game['line']))
     if game.get('pitchers'):
@@ -745,6 +747,36 @@ def render_leaders_card(date_label, title, rows, out_path,
             f'{_head(title, date_label, subtitle=subtitle)}'
             f'<table class="ld">{body}</table>{FOOTER}</div>')
     return _shoot(_document(LEADERS_CSS, card), out_path, label=title)
+
+
+FIELD_CSS = STANDINGS_CSS + f"""
+table.st td{{vertical-align:middle}}
+table.st td.tm{{white-space:nowrap}}
+table.st td.rd{{text-align:right;font-weight:700;white-space:nowrap}}
+table.st td.rd .tr{{color:{MUTED};font-weight:400;font-size:13px;margin-top:2px}}
+"""
+
+
+def render_field_card(date_label, seeds, out_path, title='Postseason Field',
+                      subtitle=''):
+    """The five postseason clubs in seed order, each with its record and the
+    round it enters, that round's terms set small beneath it. `seeds` is a
+    list of dicts:
+        {seed, team_emoji/team_logo, name, w, l, round, terms}
+    Returns (path, (w, h))."""
+    if not seeds:
+        raise CardRenderError('no seeds to render')
+    body = ('<tr><th class="rk"></th><th></th><th class="wl">W&ndash;L</th>'
+            '<th class="rd">ENTERS</th></tr>')
+    for s in seeds:
+        body += (f'<tr><td class="rk">{s["seed"]}</td>'
+                 f'<td class="tm">{_mark(s, "team", MARK_TABLE)} {_esc(s["name"])}</td>'
+                 f'<td class="wl">{s["w"]}&ndash;{s["l"]}</td>'
+                 f'<td class="rd">{_esc(s["round"])}'
+                 f'<div class="tr">{_esc(s["terms"])}</div></td></tr>')
+    card = (f'<div class="card">{_head(title, date_label, subtitle=subtitle)}'
+            f'<table class="st">{body}</table>{FOOTER}</div>')
+    return _shoot(_document(FIELD_CSS, card), out_path, label=title)
 
 
 def render_standings_card(date_label, rows, out_path, cut_after=5,
