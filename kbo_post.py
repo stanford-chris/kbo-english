@@ -278,14 +278,22 @@ def series_after(g):
     return wins
 
 
-def series_text(wins, need):
+def series_text(wins, need, wild_card=False):
     """'LG leads series 2–0', 'Series tied 1–1', 'LG wins series 4–1', or ''
-    before a series with no wins on the board."""
+    before a series with no wins on the board.
+
+    A decided wild card reads 'Samsung advances', no score: the 4th seed's
+    head start counts as a win, so a score would credit it with a game it
+    never played ('Samsung wins series 2–1' after winning one). His call,
+    2 October 2026."""
     (a, na), (b, nb) = sorted(wins.items(), key=lambda kv: -kv[1])
     if na == nb:
         return f'Series tied {na}–{nb}' if na else ''
-    verb = 'wins' if na >= need else 'leads'
-    return f'{SHORT_NAMES.get(a, a)} {verb} series {na}–{nb}'
+    if na >= need:
+        if wild_card:
+            return f'{SHORT_NAMES.get(a, a)} advances'
+        return f'{SHORT_NAMES.get(a, a)} wins series {na}–{nb}'
+    return f'{SHORT_NAMES.get(a, a)} leads series {na}–{nb}'
 
 
 def postseason_label(g, final):
@@ -299,7 +307,7 @@ def postseason_label(g, final):
     title, need = round_
     wins = series_after(g) if final else series_before(g)
     bits = [f'Game {g["seriesGameNo"]}'] if g.get('seriesGameNo') else []
-    text = series_text(wins, need)
+    text = series_text(wins, need, g.get('roundCode') == 'kbo_ps_wd')
     if text:
         bits.append(text)
     return title, ' · '.join(bits)

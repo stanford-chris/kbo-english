@@ -197,7 +197,13 @@ class TestPostseasonLabels(Patched):
         self.assertEqual(k.postseason_label(g2, final=False)[1],
                          'Game 2 · Series tied 1–1')
         self.assertEqual(k.postseason_label(g2, final=True)[1],
-                         'Game 2 · Samsung wins series 2–1')
+                         'Game 2 · Samsung advances')
+
+    def test_wild_card_won_in_one_game_also_advances(self):
+        g1 = ps_game('2025-10-06', 'SS', 'NC', 'kbo_ps_wd', 1, 'HOME')
+        self.feed([g1])
+        self.assertEqual(k.postseason_label(g1, final=True)[1],
+                         'Game 1 · Samsung advances')
 
     def test_series_score_follows_the_clubs_when_home_and_away_swap(self):
         g2 = ps_game('2025-10-27', 'LG', 'HH', 'kbo_ps_ks', 2, 'HOME',
