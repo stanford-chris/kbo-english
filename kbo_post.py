@@ -306,6 +306,10 @@ def postseason_label(g, final):
         return None
     title, need = round_
     wins = series_after(g) if final else series_before(g)
+    # The deciding game of the whole postseason gets its own title. His call,
+    # 2 October 2026.
+    if g.get('roundCode') == 'kbo_ps_ks' and max(wins.values()) >= need:
+        title = 'Korean Series Champions'
     bits = [f'Game {g["seriesGameNo"]}'] if g.get('seriesGameNo') else []
     text = series_text(wins, need, g.get('roundCode') == 'kbo_ps_wd')
     if text:
@@ -1069,12 +1073,14 @@ def attach_schedule_cards(date_str, playable, roster, segments):
     for i, chunk in enumerate(chunks, 1):
         # The counter only appears when there is something to count: a single
         # card should not be titled '(1 of 1)'.
-        title = ('Probable Starters' if total == 1
-                 else f'Probable Starters ({i} of {total})')
+        # On a playoff night the round leads, matching the schedule card
+        # above it; the game number and series stay on that card.
+        base = f'{ps[0]}: Probable Starters' if ps else 'Probable Starters'
+        title = base if total == 1 else f'{base} ({i} of {total})'
         cards.append(build_card(
             lambda path, chunk=chunk, title=title:
                 kbo_card.render_starters_card(label, chunk, path, title=title),
-            data.starters_alt(label, chunk, part=i, of=total)))
+            data.starters_alt(label, chunk, part=i, of=total, label=ps)))
     # All or nothing. The text replies below were chunked by character count,
     # which splits at a different place, so carding some groups and leaving the
     # rest as text would repeat some fixtures and drop others — and posting any

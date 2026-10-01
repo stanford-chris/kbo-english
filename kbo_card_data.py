@@ -619,7 +619,7 @@ def box_alt(date_label, game, label=None):
     return ' '.join(parts)
 
 
-def starters_alt(date_label, rows, part=None, of=None):
+def starters_alt(date_label, rows, part=None, of=None, label=None):
     """`part`/`of` name this card's place when the fixtures are split across
     more than one, so a screen reader is told the same thing the card's own
     title says rather than hearing two openings that sound identical."""
@@ -628,6 +628,8 @@ def starters_alt(date_label, rows, part=None, of=None):
         head = (f'Probable starting pitchers, {date_label}, '
                 f'part {part} of {of}.')
     parts = [head]
+    if label:
+        parts.append(label_alt(label))
     for r in rows:
         for side in ('away', 'home'):
             name = r.get(f'{side}_pitcher')

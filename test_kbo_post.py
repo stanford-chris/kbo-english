@@ -223,6 +223,16 @@ class TestPostseasonLabels(Patched):
         self.assertEqual(k.postseason_label(g, final=False),
                          ('Semi-Playoff', 'Game 2'))
 
+    def test_the_korean_series_clincher_is_titled_champions(self):
+        g4 = ps_game('2025-10-30', 'HH', 'LG', 'kbo_ps_ks', 4, 'AWAY',
+                     {'home': 1, 'draw': 0, 'away': 3})
+        g5 = ps_game('2025-10-31', 'HH', 'LG', 'kbo_ps_ks', 5, 'AWAY')
+        self.feed([g4, g5])
+        self.assertEqual(k.postseason_label(g5, final=True),
+                         ('Korean Series Champions', 'Game 5 · LG wins series 4–1'))
+        self.assertEqual(k.postseason_label(g5, final=False)[0], 'Korean Series')
+        self.assertEqual(k.postseason_label(g4, final=True)[0], 'Korean Series')
+
     def test_seven_game_series_needs_four(self):
         self.assertEqual(k.series_text({'LG': 3, 'HH': 1}, 4), 'LG leads series 3–1')
         self.assertEqual(k.series_text({'LG': 4, 'HH': 1}, 4), 'LG wins series 4–1')
