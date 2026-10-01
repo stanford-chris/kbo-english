@@ -41,10 +41,11 @@ YDAY = (NOW - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 CANDIDATES = [TODAY, YDAY]
 
 
-def game(date, gid, home='WO', away='HT', final=True, cancel=False):
+def game(date, gid, home='WO', away='HT', final=True, cancel=False,
+         round_code='kbo_r'):
     return {'gameId': gid, 'gameDate': date, 'gameDateTime': f'{date}T18:00:00',
             'statusCode': k.FINAL if final else 'BEFORE', 'cancel': cancel,
-            'homeTeamCode': home, 'awayTeamCode': away}
+            'homeTeamCode': home, 'awayTeamCode': away, 'roundCode': round_code}
 
 
 class Patched(unittest.TestCase):
@@ -128,6 +129,44 @@ class TestStandingsFollowsResults(Patched):
         k.load_history = lambda: {}
         self.run_mode('standings', '--date', YDAY)
         self.assertEqual(len(self.posted), 1)      # ...but a real one is not gated
+
+
+class TestPostseasonLeavesTablesAlone(Patched):
+    """A playoff game moves neither the table nor the season leaderboards, so
+    neither post repeats itself through October."""
+
+    def pick(self, slates, history):
+        k.fetch_games = lambda d: slates.get(d, [])
+        with contextlib.redirect_stdout(io.StringIO()):
+            return k.pick_standings_date(CANDIDATES, history, False)
+
+    def test_a_playoff_night_is_an_off_day_for_standings(self):
+        slate = {TODAY: [game(TODAY, 'P', round_code='kbo_ps_ks')],
+                 YDAY: [game(YDAY, 'A')]}
+        history = {f'results:{TODAY}': {}, f'results:{YDAY}': {},
+                   f'standings:{YDAY}': {}}
+        self.assertIsNone(self.pick(slate, history))
+
+    def test_an_unfinished_playoff_game_does_not_hold_anything(self):
+        slate = {TODAY: [game(TODAY, 'P', final=False, round_code='kbo_ps_wd')],
+                 YDAY: [game(YDAY, 'A')]}
+        self.assertEqual(self.pick(slate, {f'results:{YDAY}': {}}), YDAY)
+
+    def test_leaders_skip_a_week_of_only_playoff_games(self):
+        k.fetch_games = lambda d: [game(d, 'P', round_code='kbo_ps_po')]
+        self.assertFalse(k.regular_season_week(TODAY))
+
+    def test_leaders_skip_a_week_with_no_games(self):
+        k.fetch_games = lambda d: []
+        self.assertFalse(k.regular_season_week(TODAY))
+
+    def test_leaders_post_after_a_week_with_one_regular_game(self):
+        last = (NOW - datetime.timedelta(days=k.LEADERS_LOOKBACK_DAYS)).strftime('%Y-%m-%d')
+        k.fetch_games = lambda d: [game(d, 'A')] if d == last else []
+        self.assertTrue(k.regular_season_week(TODAY))
+
+    def test_a_missing_round_code_counts_as_regular_season(self):
+        self.assertFalse(k.is_postseason({'gameId': 'X'}))
 
 
 class TestLiveWalksBackANight(Patched):

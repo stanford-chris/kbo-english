@@ -111,8 +111,13 @@ RESULTS_ARCHIVE = Path(__file__).parent / 'kbo_results_history.json'
 # KBO sends the top 5 to the postseason; the standings post draws a line there.
 PLAYOFF_SPOTS = 5
 
+# fields=basic,schedule adds roundCode, seriesGameNo and seriesOutcome, which
+# the postseason needs; without it they are simply absent. It only adds keys:
+# every field the bare request returns comes back identical (checked 2 October
+# 2026).
 API = ('https://api-gw.sports.naver.com/schedule/games'
-       '?upperCategoryId=kbaseball&categoryId=kbo&fromDate={d}&toDate={d}')
+       '?fields=basic,schedule'
+       '&upperCategoryId=kbaseball&categoryId=kbo&fromDate={d}&toDate={d}')
 PREVIEW_API = 'https://api-gw.sports.naver.com/schedule/games/{gid}/preview'
 RECORD_API = 'https://api-gw.sports.naver.com/schedule/games/{gid}/record'
 
@@ -217,6 +222,24 @@ KEEP_SURNAME_FIRST = {'54843', '56719'}
 # Naver statusCode values: BEFORE (scheduled), STARTED/READY (in progress),
 # RESULT (final), CANCEL (postponed).
 FINAL = 'RESULT'
+
+# Postseason games arrive in the same feed as the regular season, told apart
+# only by roundCode: 'kbo_r' for the regular season, 'kbo_ps_wd' / '_sp' / '_po'
+# / '_ks' for the wild card, semi-playoff, playoff and Korean Series (seen in
+# the 2025 postseason, checked 2 October 2026). Schedule, live and results post
+# them like any other game; standings and leaders must not, because a playoff
+# game moves neither the table nor the season leaderboards.
+POSTSEASON_PREFIX = 'kbo_ps'
+
+
+def is_postseason(g):
+    return str(g.get('roundCode') or '').startswith(POSTSEASON_PREFIX)
+
+
+# How far back the leaders run looks for a regular-season game. A week with
+# none (the postseason, the winter) has nothing new to report, so it skips
+# rather than reposting last week's boards.
+LEADERS_LOOKBACK_DAYS = 7
 
 # Leaders post — (API category key, display label), LEADER_COUNT rows each. The key
 # is both the leaderboard's `type` and the stat field on each row. includeFields
@@ -1100,6 +1123,18 @@ def evaluate_results(candidates, history, ignore_history):
     return None
 
 
+def regular_season_week(date_str):
+    """True if a regular-season game was played in the LEADERS_LOOKBACK_DAYS
+    before date_str, i.e. the leaderboards can have moved since last week."""
+    day = datetime.strptime(date_str, '%Y-%m-%d')
+    for n in range(1, LEADERS_LOOKBACK_DAYS + 1):
+        d = (day - timedelta(days=n)).strftime('%Y-%m-%d')
+        if any(not g.get('cancel') and not is_postseason(g)
+               for g in fetch_games(d)):
+            return True
+    return False
+
+
 def pick_standings_date(candidates, history, ignore_history):
     """The date whose standings the evening run should post, newest first, or
     None if there's nothing new yet. A date settles once all of its games are
@@ -1115,7 +1150,11 @@ def pick_standings_date(candidates, history, ignore_history):
         if already_posted(history, f'standings:{d}', ignore_history):
             return None                     # newest unposted date is done; stop
         games = fetch_games(d)
-        noncancel = [g for g in games if not g.get('cancel')]
+        # A playoff night leaves the table where the season left it, so it
+        # counts as an off-day: without this, every postseason game reposted
+        # the final regular-season table unchanged.
+        noncancel = [g for g in games
+                     if not g.get('cancel') and not is_postseason(g)]
         live = [g for g in noncancel if g.get('statusCode') != FINAL]
         if live:
             print(f'{d}: {len(live)} game(s) still unfinished — holding.')
@@ -1135,7 +1174,7 @@ def pick_standings_date(candidates, history, ignore_history):
                       f'yet — holding the table until it has.')
                 return None
             return d
-        print(f'{d}: no games — standings unchanged.')
+        print(f'{d}: no regular-season games — standings unchanged.')
     return None
 
 
@@ -1299,6 +1338,10 @@ def main():
         date_str = date_arg(argv) or datetime.now(KST).strftime('%Y-%m-%d')
         if already_posted(history, f'leaders:{date_str}', ignore_history):
             print(f'leaders for {date_str} already posted — skipping.')
+            return
+        if not date_arg(argv) and not regular_season_week(date_str):
+            print(f'{date_str}: no regular-season games in the past '
+                  f'{LEADERS_LOOKBACK_DAYS} days — leaders unchanged, skipping.')
             return
         data = fetch_leaders(date_str[:4])
         roster = load_roster()

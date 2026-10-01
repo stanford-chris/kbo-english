@@ -69,10 +69,11 @@ def team_marks(code, prefix):
             f'{prefix}_logo': logo_uri(code)}
 
 # The postseason cut line only earns its place once the race is live, so it is
-# drawn in the final month and not before. The 2026 regular season ends 6
-# September (KBO's published calendar; Naver's schedule feed also stops there) —
+# drawn in the final month and not before. The 2026 regular season ends 12
+# October, not the 6 September recorded here in July: Naver's feed carries its
+# last 'kbo_r' game that day and nothing after (checked 2 October 2026).
 # UPDATE THIS EACH SEASON, nothing derives it automatically.
-SEASON_END = date(2026, 9, 6)
+SEASON_END = date(2026, 10, 12)
 CUTLINE_DAYS = 31
 
 
