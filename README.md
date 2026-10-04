@@ -24,6 +24,31 @@ names use a stable 2-letter code; pitcher and leader names are romanized from th
 KBO English pages and cached in kbo_roster.json. Dedup is by (mode, date) in
 kbo_history.json, so each card posts at most once per day.
 
+## During the postseason
+
+Playoff games arrive in the same Naver feed as the regular season, told apart
+only by their roundCode (kbo_ps_wd, _sp, _po and _ks for the Wild Card,
+Semi-Playoff, Playoff and Korean Series). The bot handles them like this:
+
+- Postseason field: once, the morning after the regular season's last game, the
+  schedule run posts a card of the top five, their records and the round each
+  enters (1st to the Korean Series, 2nd to the Playoff, 3rd to the
+  Semi-Playoff, 4th and 5th to the Wild Card). The feed decides when the season
+  is over, not a fixed date. If the KBO standings table is not yet populated
+  that morning, the evening standings polls carry it instead.
+- schedule, live and results post playoff games as usual, but the cards are
+  titled with the round (on the starters card too) and carry the game number
+  and series state under the date, e.g. "Game 2 · LG leads series 2-0". The
+  alt text adds the same as a sentence.
+- The series score is worked out from the previous finished game of the
+  series. In the Wild Card the 4th seed hosts and starts a win up, so a decided
+  Wild Card reads "Samsung advances" with no score rather than crediting the
+  head start as a game played.
+- The game that clinches the Korean Series is titled "Korean Series Champions".
+- standings and leaders do not post on playoff-only nights or weeks: a playoff
+  game moves neither the table nor the season leaderboards, so the final
+  regular-season table is not reposted after every playoff game.
+
 ## When it posts
 
 The launchd plists in ~/Library/LaunchAgents are the authority; this is the
