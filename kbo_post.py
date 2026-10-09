@@ -1137,10 +1137,53 @@ def leaders_segments(date_str, raw, roster, added):
     return boards
 
 
+# ⚠ A send that TIMES OUT may still have been created. On 30 September 2026
+# the live run's NC@OB box score raised InvokeTimeoutError (a read timeout,
+# after the server had the post), so history never recorded it, and the
+# results roundup five minutes later threaded it again: the same card twice.
+# So a timed-out send looks for itself on the feed before the run gives up.
+LANDED_CHECKS = 3          # feed reads after a timeout
+LANDED_PAUSE = 4           # seconds between them: the feed can lag the write
+LANDED_SLACK = 120         # seconds before the send that still count as "this send"
+
+
+def _landed(bsky, text, alt, since):
+    """The post a timed-out send created, or None if it cannot be found.
+
+    Matched on exact text, exact image alt (None for a text post) and a
+    creation time no earlier than `since`. Every card's alt names its date and
+    teams, and a text post's text names its date, so an older post never
+    matches. A failed feed read counts as not found: the caller re-raises and
+    the next poll retries, which is what happened before this check existed."""
+    for attempt in range(LANDED_CHECKS):
+        if attempt:
+            time.sleep(LANDED_PAUSE)
+        try:
+            feed = bsky.get_author_feed(actor=HANDLE, limit=15,
+                                        filter='posts_with_replies').feed
+        except Exception as e:                              # noqa: BLE001
+            print(f'  (feed read after timeout failed: {e!r})')
+            continue
+        for item in feed:
+            post = item.post
+            record = post.record
+            try:
+                created = datetime.fromisoformat(record.created_at)
+            except (TypeError, ValueError):
+                continue
+            if created < since or record.text != text:
+                continue
+            images = getattr(getattr(record, 'embed', None), 'images', None)
+            if (images[0].alt if images else None) == alt:
+                return post
+    return None
+
+
 def post_thread(segments):
     """Post one or more segments as a Bluesky thread (each replies to the last).
     atproto is imported lazily so --dry-run runs without the dependency."""
     from atproto import Client, models
+    from atproto_client.exceptions import InvokeTimeoutError, NetworkError
 
     password = keychain_password(HANDLE, KEYCHAIN_SERVICE)
     bsky = Client()
@@ -1152,15 +1195,23 @@ def post_thread(segments):
         reply = None
         if root_ref is not None:
             reply = models.AppBskyFeedPost.ReplyRef(root=root_ref, parent=parent_ref)
-        if card:
-            width, height = card['size']
-            resp = bsky.send_image(
-                text=build_tb(body, tags), image=card['png'],
-                image_alt=card['alt'], reply_to=reply,
-                image_aspect_ratio=models.AppBskyEmbedDefs.AspectRatio(
-                    width=width, height=height))
-        else:
-            resp = bsky.send_post(text=build_tb(body, tags), reply_to=reply)
+        since = datetime.now(timezone.utc) - timedelta(seconds=LANDED_SLACK)
+        try:
+            if card:
+                width, height = card['size']
+                resp = bsky.send_image(
+                    text=build_tb(body, tags), image=card['png'],
+                    image_alt=card['alt'], reply_to=reply,
+                    image_aspect_ratio=models.AppBskyEmbedDefs.AspectRatio(
+                        width=width, height=height))
+            else:
+                resp = bsky.send_post(text=build_tb(body, tags), reply_to=reply)
+        except (InvokeTimeoutError, NetworkError):
+            resp = _landed(bsky, plain_text(body, tags),
+                           card['alt'] if card else None, since)
+            if resp is None:
+                raise
+            print(f'  send timed out but the post landed: {resp.uri}')
         ref = models.create_strong_ref(resp)
         if root_ref is None:
             root_ref = ref

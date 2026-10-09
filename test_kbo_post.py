@@ -543,5 +543,121 @@ class TestDigestCardRecords(unittest.TestCase):
         self.assertNotIn('class="rec"', self._html(rows))
 
 
+try:
+    import atproto                                            # noqa: F401
+    from atproto_client.exceptions import InvokeTimeoutError
+except ImportError:                                           # pragma: no cover
+    atproto = None
+
+
+@unittest.skipIf(atproto is None, 'needs atproto (post_thread imports it)')
+class TestTimedOutSendThatLanded(unittest.TestCase):
+    """30 September 2026: a live box score's send raised InvokeTimeoutError
+    after the server had created the post, so it was never recorded and the
+    results roundup posted the same card again five minutes later. A timed-out
+    send now finds itself on the feed and carries on; one that did not land
+    still raises, so the next poll retries as before."""
+
+    ALT = 'Box score for Wednesday, September 30. NC Dinos 5, Doosan Bears 6.'
+
+    def setUp(self):
+        self._saved = (k.keychain_password, atproto.Client, k.time.sleep)
+        k.keychain_password = lambda a, s: 'pw'
+        k.time.sleep = lambda s: None
+        self.client, self.preload = None, []
+        test = self
+
+        class FakeClient:
+            def __init__(self):
+                test.client = self
+                self.feed, self.sent = list(test.preload), []
+
+            def login(self, *a):
+                pass
+
+            def _post(self, text, alt, reply_to):
+                n = len(self.sent) + 1
+                self.sent.append((text, alt, reply_to))
+                post = _Post(f'at://did/app.bsky.feed.post/{n}', text, alt,
+                             datetime.datetime.now(UTC).isoformat())
+                if alt == test.times_out:                  # server keeps it, reply lost
+                    if test.lands:
+                        self.feed.insert(0, post)
+                    raise InvokeTimeoutError()
+                self.feed.insert(0, post)
+                return post
+
+            def send_image(self, text, image, image_alt, reply_to, image_aspect_ratio):
+                return self._post(text.build_text(), image_alt, reply_to)
+
+            def send_post(self, text, reply_to):
+                return self._post(text.build_text(), None, reply_to)
+
+            def get_author_feed(self, actor, limit, filter):
+                return _Ns(feed=[_Ns(post=p) for p in self.feed[:limit]])
+
+        atproto.Client = FakeClient
+
+    def tearDown(self):
+        k.keychain_password, atproto.Client, k.time.sleep = self._saved
+
+    def segs(self):
+        card = lambda alt: {'png': b'', 'alt': alt, 'size': (10, 10)}
+        return [('Final scores', k.HASHTAGS, card('digest')),
+                ('', (), card(self.ALT)),
+                ('', (), card('Box score, Kiwoom at Lotte.'))]
+
+    def run_thread(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            k.post_thread(self.segs())
+
+    def test_landed_send_is_adopted_and_the_thread_carries_on(self):
+        self.times_out, self.lands = self.ALT, True
+        self.run_thread()
+        self.assertEqual(len(self.client.sent), 3)           # nothing re-sent
+        last_reply = self.client.sent[2][2]
+        self.assertEqual(last_reply.parent.uri, 'at://did/app.bsky.feed.post/2')
+
+    def test_send_that_did_not_land_still_raises(self):
+        self.times_out, self.lands = self.ALT, False
+        with self.assertRaises(InvokeTimeoutError):
+            self.run_thread()
+
+    def test_another_recent_box_score_is_not_mistaken_for_it(self):
+        # The live run had posted LG@SSG six seconds before NC@OB timed out:
+        # same empty text, different card.
+        self.times_out, self.lands = self.ALT, False
+        self.preload = [_Post('at://did/lg', '', 'Box score, LG at SSG.',
+                              datetime.datetime.now(UTC).isoformat())]
+        with self.assertRaises(InvokeTimeoutError):
+            self.run_thread()
+
+    def test_an_older_post_with_the_same_card_is_not_mistaken_for_it(self):
+        self.times_out, self.lands = self.ALT, False
+        old = (datetime.datetime.now(UTC)
+               - datetime.timedelta(seconds=k.LANDED_SLACK + 60)).isoformat()
+        with contextlib.redirect_stdout(io.StringIO()):
+            k.post_thread([])                                 # builds the client
+        self.client.feed = [_Post('at://did/old', '', self.ALT, old)]
+        orig = atproto.Client
+        atproto.Client = lambda: self.client
+        try:
+            with self.assertRaises(InvokeTimeoutError):
+                self.run_thread()
+        finally:
+            atproto.Client = orig
+
+
+class _Ns:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def _Post(uri, text, alt, created):
+    embed = _Ns(images=[_Ns(alt=alt)]) if alt is not None else None
+    return _Ns(uri=uri, cid='bafy' + uri[-1],
+               record=_Ns(text=text, embed=embed, created_at=created))
+
+
 if __name__ == '__main__':
     unittest.main()
