@@ -88,10 +88,15 @@ class CardRatioTests(unittest.TestCase):
         # had to be taken back out of memory/observations.jsonl by hand.
         cls._real_observe = kbo_card._observe_portrait
         kbo_card._observe_portrait = lambda label, text: None
+        # Measure the card as drawn, before any padding: a padded card ships at
+        # full width but with wider margins, so native landscape is still the aim.
+        cls._real_pad = kbo_card.PAD_PORTRAIT
+        kbo_card.PAD_PORTRAIT = False
 
     @classmethod
     def tearDownClass(cls):
         kbo_card._observe_portrait = cls._real_observe
+        kbo_card.PAD_PORTRAIT = cls._real_pad
         cls._tmp.cleanup()
 
     def assertLandscape(self, name, size):
@@ -238,6 +243,65 @@ class LandscapeCheckTests(unittest.TestCase):
         which is what the observation key is derived from."""
         self.check('Probable Starters (1 of 2)', 1240, 1721)
         self.assertIn('Probable Starters (1 of 2)', self.logged[0][1])
+
+
+class PadToSquareTests(unittest.TestCase):
+    """The render-time fix: a portrait card is widened to square. No Chrome."""
+
+    RED, CREAM, INK = (200, 50, 63), (250, 247, 241), (28, 43, 69)
+
+    def card(self, w, h):
+        from PIL import Image, ImageDraw
+        im = Image.new('RGB', (w, h), self.CREAM)
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, w - 1, 9), fill=self.RED)        # the top bar
+        d.rectangle((40, 40, w - 41, h - 41), fill=self.INK)  # the content
+        return im
+
+    def fit(self, w, h):
+        with TemporaryDirectory() as td:
+            path = str(Path(td) / 'c.png')
+            self.card(w, h).save(path)
+            with contextlib.redirect_stdout(io.StringIO()):
+                size = kbo_card._fit_landscape('Box score', path, w, h)
+            from PIL import Image
+            with Image.open(path) as im:
+                return size, im.convert('RGB').copy()
+
+    def test_portrait_card_becomes_square(self):
+        size, im = self.fit(1240, 1300)
+        self.assertEqual(size, (1300, 1300))
+        self.assertEqual(im.size, (1300, 1300))
+
+    def test_padding_carries_the_bar_and_the_ground(self):
+        _, im = self.fit(1240, 1300)
+        self.assertEqual(im.getpixel((0, 5)), self.RED)
+        self.assertEqual(im.getpixel((1299, 5)), self.RED)
+        self.assertEqual(im.getpixel((0, 600)), self.CREAM)
+        self.assertEqual(im.getpixel((1299, 600)), self.CREAM)
+
+    def test_content_is_centred_and_untouched(self):
+        _, im = self.fit(1240, 1300)
+        self.assertEqual(im.getpixel((30 + 40, 600)), self.INK)    # left edge of ink
+        self.assertEqual(im.getpixel((30 + 39, 600)), self.CREAM)
+        self.assertEqual(im.getpixel((30 + 1199, 600)), self.INK)  # right edge
+
+    def test_landscape_card_is_left_alone(self):
+        size, im = self.fit(1240, 1178)
+        self.assertEqual(size, (1240, 1178))
+        self.assertEqual(im.size, (1240, 1178))
+
+    def test_switched_off_it_only_reports(self):
+        logged = []
+        real_obs, real_pad = kbo_card._observe_portrait, kbo_card.PAD_PORTRAIT
+        kbo_card._observe_portrait = lambda label, text: logged.append(text)
+        kbo_card.PAD_PORTRAIT = False
+        try:
+            size, im = self.fit(1240, 1300)
+        finally:
+            kbo_card._observe_portrait, kbo_card.PAD_PORTRAIT = real_obs, real_pad
+        self.assertEqual(size, (1240, 1300))
+        self.assertEqual(len(logged), 1)
 
 
 if __name__ == '__main__':

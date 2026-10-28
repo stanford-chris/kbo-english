@@ -221,6 +221,56 @@ def _check_landscape(label, w, h):
     _observe_portrait(label, text)
 
 
+# A portrait card is padded out to square at render time, so it is drawn at the
+# full FIT_BOX width like every other card. Six cards across three types went
+# out narrowed between 12 September and 3 October 2026 (444 to 513 px), each
+# found after it had posted; reporting the shape had not stopped a single one.
+#
+# Padding, not re-rendering wider: the type is scaled by FIT_BOX/height either
+# way, so a square card's text is exactly the size the portrait one's was. The
+# padding repeats each row's own edge pixel, which carries the red top bar and
+# the cream ground out to the new edges with no colour named here.
+# test_card_ratios.py turns this off, so it still measures the card as drawn.
+PAD_PORTRAIT = True
+
+
+def _pad_to_square(path, w, h):
+    """Widen a portrait PNG in place to h x h, content centred. Returns (h, h)."""
+    from PIL import Image
+    with Image.open(path) as im:
+        im = im.convert('RGB')
+        left = (h - w) // 2
+        right = h - w - left
+        out = Image.new('RGB', (h, h))
+        out.paste(im, (left, 0))
+        if left:
+            out.paste(im.crop((0, 0, 1, h)).resize((left, h)), (0, 0))
+        if right:
+            out.paste(im.crop((w - 1, 0, w, h)).resize((right, h)), (left + w, 0))
+        out.save(path)
+    return h, h
+
+
+def _fit_landscape(label, path, w, h):
+    """Return the card's final size, padding it to square if it came out portrait.
+
+    If padding cannot be done the card still ships as it is, and the shape is
+    reported by _check_landscape, as before this existed: a narrowed card is a
+    far smaller loss than no card."""
+    if h <= w or not PAD_PORTRAIT:
+        _check_landscape(label, w, h)
+        return w, h
+    try:
+        size = _pad_to_square(path, w, h)
+    except Exception as e:      # noqa: BLE001 — never lose the card over this
+        print(f'  !! could not pad the portrait {label} card: {e}')
+        _check_landscape(label, w, h)
+        return w, h
+    print(f'  ({label} card was portrait at {w}x{h}: padded to {h}x{h} so it '
+          f'is drawn at the full {FIT_BOX}px)')
+    return size
+
+
 def _shoot(doc, out_path, label='card'):
     """Render an HTML doc to a content-cropped PNG. Returns (out_path, (w, h)).
     Retries once on an overrun, within this process's RETRY_BUDGET.
@@ -266,7 +316,7 @@ def _shoot(doc, out_path, label='card'):
                 f'Chrome produced no image (exit {r.returncode}): '
                 f'{(r.stderr or r.stdout or "").strip()[:200]}')
         _, size = _crop_to_content(raw_png, out_path)
-    _check_landscape(label, *size)
+    size = _fit_landscape(label, out_path, *size)
     return out_path, size
 
 
