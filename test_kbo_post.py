@@ -659,5 +659,43 @@ def _Post(uri, text, alt, created):
                record=_Ns(text=text, embed=embed, created_at=created))
 
 
+class TestBoxScoreDate(unittest.TestCase):
+    """The box score's date comes from gameDate, not the gameId: postseason
+    ids carry a placeholder where the year goes, and the Game 1 playoff box
+    score of 26 October 2026 went out reading "Wednesday, October 26" beside
+    a final-scores card that correctly said Monday."""
+
+    def setUp(self):
+        import kbo_card_data
+        self.data = kbo_card_data
+        self._saved = (k.fetch_box_score, kbo_card_data.box_input,
+                       k.build_card, k.card_only)
+        self.alts = []
+        k.fetch_box_score = lambda gid: {'stub': True}
+        kbo_card_data.box_input = lambda *a: {}
+        k.build_card = lambda render, alt: self.alts.append(alt) or ('card', alt)
+        k.card_only = lambda seg, card: seg
+
+    def tearDown(self):
+        (k.fetch_box_score, self.data.box_input,
+         k.build_card, k.card_only) = self._saved
+
+    def alt_for(self, gid):
+        g = game('2026-10-26', gid, home='SS', away='HT')
+        real = self.data.box_alt
+        self.data.box_alt = lambda date_label, game, label=None: date_label
+        try:
+            k.box_score_segments([g], {}, [])
+        finally:
+            self.data.box_alt = real
+        return self.alts[-1]
+
+    def test_postseason_id_does_not_set_the_weekday(self):
+        self.assertEqual(self.alt_for('55551026HTSS02026'), 'Monday, October 26')
+
+    def test_regular_season_id_unchanged(self):
+        self.assertEqual(self.alt_for('20261026HTSS02026'), 'Monday, October 26')
+
+
 if __name__ == '__main__':
     unittest.main()

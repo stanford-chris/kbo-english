@@ -1014,7 +1014,10 @@ def box_score_segments(finals, roster, added, attendance=None, tags=(), skip_ids
             figure, venue = att
             att_str = f'{figure} · {venue}' if venue else figure
         game = data.box_input(g, record, roster, added, att_str)
-        label = data.card_date(f'{g["gameId"][:4]}-{g["gameId"][4:6]}-{g["gameId"][6:8]}')
+        # gameDate, never the gameId: a postseason id puts a placeholder where
+        # the year goes (3333 for the semi-playoff), so the Game 1 playoff box
+        # score of 26 October 2026 went out reading "Wednesday, October 26".
+        label = data.card_date(g['gameDate'])
         ps = postseason_label(g, final=True)
         title, sub = ps or ('Final', '')
         card = build_card(
